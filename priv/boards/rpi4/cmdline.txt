@@ -1,0 +1,14 @@
+# Inner kernel cmdline (lives inside boot.img, signed). The kernel unpacks the
+# initramfs and runs /init (cryptinit), which reads these to set up the rootfs:
+#
+#   root=          the flash device cryptinit sets dm-verity (and optional
+#                  dm-crypt) on
+#   rootfstype=    filesystem on top (squashfs)
+#   ro             mount read-only
+#   init=          the REAL init to exec after switch_root
+#   verity_roothash=  INJECTED at build time by nerves_sign (the trust anchor) —
+#                  do not set it here by hand.
+#
+# Adjust root= to your rootfs partition. serial0 is remapped by the firmware.
+
+console=serial0,115200 root=/dev/mmcblk0p2 rootfstype=squashfs ro init=/sbin/init rootwait

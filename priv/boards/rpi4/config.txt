@@ -1,0 +1,41 @@
+# Inner RPi config.txt (lives inside boot.img). The firmware loads the kernel
+# and the cryptinit initramfs from here.
+
+kernel=Image
+initramfs rootfs.cpio.gz
+cmdline=cmdline.txt
+uart_2ndstage=1
+
+# 64-bit
+arm_64bit=1
+
+# The variant is selected in fwup.conf; we always use the same names.
+start_file=start4x.elf
+fixup_file=fixup4x.dat
+
+disable_splash=1
+gpu_mem=192
+
+dtparam=i2c_arm=on
+dtparam=spi=on
+dtparam=audio=on
+
+camera_auto_detect=1
+display_auto_detect=1
+
+dtoverlay=vc4-kms-v3d
+max_framebuffers=2
+disable_fw_kms_setup=1
+disable_overscan=1
+
+# USB gadget mode on the USB-C port
+dtoverlay=dwc2
+
+# Preserve crash info across reboots in DRAM
+dtoverlay=ramoops
+
+enable_uart=1
+
+[cm4]
+# CM4 I/O board: enable host-mode USB
+dtoverlay=dwc2,dr_mode=host
