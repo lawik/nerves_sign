@@ -134,10 +134,16 @@ keying artifacts by board) avoids it.
 - The rootfs hash tree is appended after the squashfs at 4096 (DmVerity) —
   exactly what cryptinit's `fs.c` expects, so no offset file is shipped.
 - Encryption (optional): `rootfs_key = cmd:/usr/sbin/unlock` in
-  `initramfs.conf`; cipher must match the kernel + the offline rootfs
-  encryption in the outer fwup. cryptinit default is `aes-xts-plain64` (entryfy
-  was `aes-cbc-plain` — switch to xts, and ensure `CRYPTO_XTS=y`). Pin
-  cipher + required kernel CONFIG together in the board entry.
+  `initramfs.conf`. The cipher is **configurable** — cryptinit reads
+  `rootfs_cipher`/`data_cipher` from `initramfs.conf` and passes the string
+  straight to the dm-crypt table (default `aes-xts-plain64` only when unset).
+  The library default is `aes-xts-plain64`; projects with already-provisioned
+  devices override per volume (`config :nerves_sign, rootfs_cipher:
+  "aes-cbc-plain"`) — that legacy choice lives in the project, never in the
+  library. The exact cipher string must match in three places: `initramfs.conf`
+  (runtime), the offline rootfs encryption in the outer fwup, and the kernel
+  (`CRYPTO_XTS=y`/`CRYPTO_CBC=y`). `NervesSign.Board.cipher/2` resolves
+  config-override-then-board-default.
 - First-boot / encrypt-in-place is NOT in the init. It's a userspace
   `cmd:`-style helper (`bootstrap-or-derive`) the board can ship; the state
   machine pattern (copy -> verify-mountable -> wipe source last, idempotent,
@@ -179,8 +185,14 @@ enlarged boot partition, and the loose-file boot layout.
 
 ## Open decisions
 
-- Cipher: standardize on `aes-xts-plain64` (cryptinit default) and require the
-  matching kernel CONFIG, or keep cbc for entryfy continuity. Leaning xts.
+- ~~Cipher~~ (resolved): configurable per volume via `initramfs.conf`
+  (`rootfs_cipher`/`data_cipher`), library default `aes-xts-plain64`, project
+  override for legacy devices (entryfy keeps `aes-cbc-plain` in its own config,
+  not the library). cryptinit already supports this; no init change needed.
+- Key helper: nerves_sign ships a default RPi `unlock.c` (OTP via `/dev/vcio`,
+  shared rpi4/cm4); projects override the source with
+  `config :nerves_sign, key_helper_source:` (e.g. HKDF, or a first-boot
+  bootstrap state machine). Product-specific helpers live in the project.
 - Whether to gzip the kernel by default (probably no, once the initramfs is
   ~hundreds of KB — a raw kernel fits the default partition).
 - Whether the cryptinit source is a git dep (pinned ref) or a published hex

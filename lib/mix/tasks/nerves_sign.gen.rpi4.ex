@@ -44,6 +44,12 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
         config :nerves_sign,
           board: :rpi4,
           verity: [block_size: 4096],
+          # Cipher defaults to aes-xts-plain64. Override per volume to keep an
+          # existing device scheme (must match your fwup offline encryption and
+          # the kernel's enabled crypto):
+          # rootfs_cipher: "aes-cbc-plain",
+          # Override the OTP/key helper source if you need your own:
+          # key_helper_source: "priv/secure_boot/unlock.c",
           rpi4_secure_boot: [
             private_key_path: System.fetch_env!("NERVES_SIGN_BOOT_PRIVATE_KEY_PATH"),
             config_txt_path: "config/rpi4/config.txt",

@@ -26,4 +26,42 @@ defmodule NervesSign.Board do
 
   @doc "priv-relative dir holding this board's templates + helper sources."
   @callback priv_dir() :: Path.t()
+
+  @doc "Default key-helper C source, priv-relative (e.g. \"boards/rpi4/helpers/unlock.c\")."
+  @callback default_key_helper_source() :: Path.t()
+
+  # --- resolution: project config overrides board defaults -------------------
+
+  @doc """
+  Absolute path to the key-helper source to compile.
+
+  `config :nerves_sign, key_helper_source: "path/to/unlock.c"` (project-relative
+  or absolute) overrides the board default shipped in nerves_sign's priv.
+  """
+  @spec key_helper_source(atom()) :: Path.t()
+  def key_helper_source(board) do
+    case Application.get_env(:nerves_sign, :key_helper_source) do
+      nil ->
+        Path.join(:code.priv_dir(:nerves_sign), impl(board).default_key_helper_source())
+
+      override ->
+        if Path.type(override) == :absolute,
+          do: override,
+          else: Path.join(File.cwd!(), override)
+    end
+  end
+
+  @doc """
+  The dm-crypt cipher for `which` in `[:rootfs, :data]`.
+
+  Library default is the board default (`aes-xts-plain64`). Projects with
+  existing devices override per volume, e.g.
+  `config :nerves_sign, rootfs_cipher: "aes-cbc-plain"`. The same string must
+  match the offline encryption in your fwup.conf and the kernel's enabled
+  crypto.
+  """
+  @spec cipher(atom(), :rootfs | :data) :: String.t()
+  def cipher(board, which) when which in [:rootfs, :data] do
+    Application.get_env(:nerves_sign, :"#{which}_cipher") || impl(board).default_cipher()
+  end
 end

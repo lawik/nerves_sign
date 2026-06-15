@@ -1,32 +1,40 @@
 # RPi4/CM4 key helpers
 
 cryptinit resolves an encryption key by running a `cmd:` helper that prints 64
-hex characters on stdout. For RPi4/CM4 the key is read from the customer OTP
-rows via the VideoCore mailbox (`/dev/vcio`).
+hex characters on stdout. For RPi4/CM4 the key comes from the customer OTP rows
+read via the VideoCore mailbox (`/dev/vcio`).
 
-We do not vendor the helper source here. Use the upstream reference and build it
-static against the musl Nerves toolchain:
+## Default: `unlock.c`
 
-- Reference: `nerves_cryptinit`, `examples/pi5-otp/` (`unlock.c` works on Pi4/CM4
-  too — it reads `MBOX_TAG_GET_CUSTOMER_OTP`).
-- Build it static (`CC=aarch64-nerves-linux-musl-gcc CFLAGS="-Os -static"`),
-  install at `/usr/sbin/unlock` in the CPIO, and set
-  `rootfs_key = cmd:/usr/sbin/unlock` in `initramfs.conf`.
+nerves_sign ships `unlock.c` here as the default helper for both rpi4 and cm4.
+It's built static against the musl Nerves toolchain, installed at
+`/usr/sbin/unlock`, and wired with `rootfs_key = cmd:/usr/sbin/unlock` in
+`initramfs.conf`.
+
+## Using your own helper
+
+Point nerves_sign at an alternate source instead of the default:
+
+```elixir
+config :nerves_sign, key_helper_source: "priv/secure_boot/unlock.c"
+```
+
+Reasons you'd override:
+- per-partition key derivation (HKDF over the OTP bytes, taking a `purpose` arg),
+- a first-boot **bootstrap** helper that provisions an unprovisioned device
+  (generate key -> dm-crypt the destination -> copy plaintext rootfs through it
+  -> wipe source last -> persist key to OTP -> print key), idempotent and
+  power-loss safe. The bare `unlock.c` reports an empty OTP as an error rather
+  than provisioning.
 
 ## Helper contract (from cryptinit)
 
 - Input: none (figures out state from the device).
-- Output: 64 hex chars on stdout (256-bit key); whitespace trimmed.
-- Exit 0 on success; non-zero is fatal (cryptinit panics — correct, since the
-  rootfs can't unlock).
+- Output: 64 hex chars on stdout; whitespace trimmed.
+- Exit 0 on success; non-zero is fatal (cryptinit panics).
 
-## First-boot bootstrap
+## Project-specific helpers don't live here
 
-First-boot encrypt-in-place is a separate `cmd:` helper
-(`bootstrap-or-derive`), not part of the init. On an unprovisioned device it
-generates the key, sets up dm-crypt on the destination, copies the plaintext
-rootfs through it, wipes the source last, persists the key to OTP, then prints
-the key; on later boots it just reads OTP and prints. The state machine must be
-idempotent and power-loss safe (wipe the source only after the destination
-verifies mountable). nerves_sign will ship a board template for this; the key
-source is the OTP read above.
+Anything tied to a particular product's existing scheme (e.g. a legacy
+`aes-cbc-plain` first-boot conversion) belongs in that firmware project and is
+referenced via `key_helper_source`, not added to nerves_sign.

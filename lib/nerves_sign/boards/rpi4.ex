@@ -31,4 +31,7 @@ defmodule NervesSign.Boards.RPi4 do
 
   @impl true
   def priv_dir, do: "boards/rpi4"
+
+  @impl true
+  def default_key_helper_source, do: "boards/rpi4/helpers/unlock.c"
 end
