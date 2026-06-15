@@ -20,6 +20,8 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
   @board_dir "boards/rpi4"
 
   @files [
+    {"fwup.conf", "config/rpi4/fwup.conf"},
+    {"fwup_include/fwup-common.conf", "config/rpi4/fwup_include/fwup-common.conf"},
     {"boot_fwup.conf", "config/rpi4/boot_fwup.conf"},
     {"config.txt", "config/rpi4/config.txt"},
     {"cmdline.txt", "config/rpi4/cmdline.txt"},
@@ -62,6 +64,7 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
           ]
 
         config :nerves, :firmware,
+          fwup_conf: "config/rpi4/fwup.conf",
           post_processing_script: Path.expand("priv/nerves_sign/post_process")
 
     Your kernel must have these built in (=y): #{Enum.join(NervesSign.Boards.RPi4.required_kernel_config(), ", ")}.
