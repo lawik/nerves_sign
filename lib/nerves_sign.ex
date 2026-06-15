@@ -10,7 +10,6 @@ defmodule NervesSign do
 
   See `PLAN.md` for the full design and milestones.
   """
-  require Logger
 
   @doc """
   Run the full secure-boot post-processing pipeline against the built rootfs.
@@ -20,6 +19,9 @@ defmodule NervesSign do
   `NervesSign.PostProcess`.
   """
   def run(rootfs_path) do
+    # The post-processing bridge runs `mix run --no-start`, so make sure our
+    # runtime deps are up.
+    {:ok, _} = Application.ensure_all_started(:briefly)
     NervesSign.PostProcess.run(rootfs_path)
   end
 

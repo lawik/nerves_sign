@@ -8,7 +8,6 @@ defmodule NervesSign.BootImage do
 
   Lifted from ex_verity `Rpi4SecureBoot`.
   """
-  require Logger
 
   @doc """
   Build `boot.img` from the system images plus the prepared initramfs and

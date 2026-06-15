@@ -1,52 +1,29 @@
 defmodule NervesSign.Cmdline do
   @moduledoc """
-  Inject the dm-verity root hash into the inner kernel cmdline.
+  Inject the dm-verity root hash into the kernel cmdline.
 
   `nerves_cryptinit` reads `verity_roothash=` from the (signed) kernel cmdline
-  as its trust anchor. We compute the hash at build time (`NervesSign.DmVerity`)
-  and write it into the inner `cmdline.txt` that goes inside `boot.img`.
+  as its trust anchor. We compute the hash at build time
+  (`NervesSign.DmVerity`) and write it into the inner `cmdline.txt`.
+
+  The whole `cmdline.txt` is passed to the kernel as parameters, so the output
+  is a single clean line: comment (`#`) and blank lines are dropped, any
+  existing `verity_roothash=` is replaced, and the new value is appended.
   """
 
-  @doc """
-  Return the contents of `template_path` with `verity_roothash=<hash>` set
-  (replacing any existing value), suitable to write as the inner cmdline.txt.
-  """
+  @doc "Return a single-line cmdline from `template_path` with `verity_roothash=<hash>` set."
   @spec with_roothash(Path.t(), String.t()) :: String.t()
   def with_roothash(template_path, root_hash) do
-    template_path
-    |> File.read!()
-    |> String.split("\n")
-    |> Enum.map(&strip_existing/1)
-    |> Enum.join("\n")
-    |> append_param("verity_roothash=#{root_hash}")
-  end
-
-  defp strip_existing(line) do
-    if String.starts_with?(String.trim_leading(line), "#") do
-      line
-    else
-      line
+    params =
+      template_path
+      |> File.read!()
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
+      |> Enum.join(" ")
       |> String.split()
       |> Enum.reject(&String.starts_with?(&1, "verity_roothash="))
-      |> Enum.join(" ")
-    end
-  end
 
-  # Append to the first non-comment, non-empty parameter line.
-  defp append_param(text, param) do
-    {lines, done} =
-      text
-      |> String.split("\n")
-      |> Enum.map_reduce(false, fn line, done ->
-        trimmed = String.trim(line)
-
-        if not done and trimmed != "" and not String.starts_with?(trimmed, "#") do
-          {String.trim_trailing(line) <> " " <> param, true}
-        else
-          {line, done}
-        end
-      end)
-
-    if done, do: Enum.join(lines, "\n"), else: text <> "\n" <> param <> "\n"
+    Enum.join(params ++ ["verity_roothash=#{root_hash}"], " ") <> "\n"
   end
 end

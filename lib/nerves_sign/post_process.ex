@@ -1,50 +1,87 @@
 defmodule NervesSign.PostProcess do
   @moduledoc """
-  The `mix firmware` post-processing entrypoint.
+  The `mix firmware` post-processing entrypoint. Runs in the firmware project's
+  context against the built rootfs:
 
-  Runs in the parent firmware project's context, where `config :nerves_sign`
-  and `Mix.target()` are reliable and it re-runs every build — so all
-  board-specific work happens here (see PLAN.md "Build flow"):
-
-    1. build the board key helper(s)        (Toolchain + make)
-    2. veritysetup format the rootfs         (DmVerity)
-    3. inject verity_roothash= into cmdline   (Cmdline)
-    4. assemble initramfs.cpio.gz             (Cryptinit + Initramfs)
-    5. (optional) gzip the kernel
-    6. build boot.img                         (BootImage)
-    7. sign -> boot.sig                       (BootImage)
+    1. veritysetup format the rootfs           (DmVerity)
+    2. resolve musl toolchain                   (Toolchain)
+    3. build cryptinit init                     (Cryptinit)
+    4. inject verity_roothash= into cmdline     (Cmdline)
+    5. build helper + assemble initramfs.cpio.gz (Initramfs)
+    6. build boot.img                           (BootImage)
+    7. sign -> boot.sig                          (BootImage)
     8. copy outer config.txt/cmdline.txt
   """
   require Logger
 
-  alias NervesSign.{Board, BootImage, Cmdline, Cryptinit, DmVerity, Initramfs}
+  alias NervesSign.{Board, BootImage, Cmdline, Cryptinit, DmVerity, Initramfs, Toolchain}
 
   @doc "Run the pipeline against the built rootfs at `rootfs_path`."
   def run(rootfs_path) do
     board = NervesSign.board()
-    _board_mod = Board.impl(board)
     cfg = Application.get_all_env(:nerves_sign)
+    sb = Map.new(cfg[:rpi4_secure_boot] || [])
+    app_dir = System.get_env("NERVES_APP", File.cwd!())
     system_path = cfg[:system_path] || System.fetch_env!("NERVES_SYSTEM")
 
-    Logger.info("nerves_sign: post-processing for board #{inspect(board)}")
+    Logger.info("nerves_sign: post-processing #{rootfs_path} for board #{inspect(board)}")
 
-    # 2. hash tree
-    {root_hash, _offset} =
-      DmVerity.generate_tree!(Map.new(cfg[:verity] || []), rootfs_path)
+    # 1. hash tree
+    {root_hash, _offset} = DmVerity.generate_tree!(Map.new(cfg[:verity] || []), rootfs_path)
 
-    # 3. cmdline with the trust anchor
-    _inner_cmdline = Cmdline.with_roothash(board_file(board, "cmdline.txt"), root_hash)
+    # 2/3. toolchain + cryptinit
+    toolchain = Toolchain.resolve(board)
+    init = Cryptinit.build(toolchain)
 
-    # 1/4. initramfs (cryptinit + helper + conf)  -- TODO milestones 2-3
-    _init = fn -> Cryptinit.build(board) end
-    _cpio = fn spec -> Initramfs.assemble(spec) end
+    # 4. inner cmdline with the trust anchor
+    cmdline_src = resolve(sb[:cmdline_txt_path] || "config/rpi4/cmdline.txt", app_dir)
+    inner_cmdline = Briefly.create!()
+    File.write!(inner_cmdline, Cmdline.with_roothash(cmdline_src, root_hash))
 
-    # 6/7/8. boot.img + sign + outer txts          -- TODO wiring in milestone 4
-    _ = {BootImage, system_path}
+    # 5. initramfs
+    conf = resolve(sb[:initramfs_conf] || "config/rpi4/initramfs.conf", app_dir)
 
-    Logger.warning("nerves_sign: pipeline wiring is staged (see PLAN.md milestones 2-4)")
+    conf =
+      if File.exists?(conf), do: conf, else: board_file(board, "initramfs.conf")
+
+    cpio =
+      Initramfs.assemble(%{board: board, toolchain: toolchain, init: init, initramfs_conf: conf})
+
+    # 6. boot.img
+    config_txt = resolve(sb[:config_txt_path] || "config/rpi4/config.txt", app_dir)
+    boot_fwup = resolve_fwup(board, sb[:boot_fwup_conf], app_dir)
+
+    {:ok, boot_img} =
+      BootImage.build(system_path, boot_fwup, %{
+        config_txt: config_txt,
+        cmdline_txt: inner_cmdline,
+        rootfs_pubkey: sb[:rootfs_public_key_path],
+        initramfs_path: cpio
+      })
+
+    Logger.info("nerves_sign: built #{boot_img} (#{File.stat!(boot_img).size} bytes)")
+
+    # 7. sign
+    {:ok, sig} = BootImage.sign(boot_img, resolve(sb[:private_key_path], app_dir))
+    Logger.info("nerves_sign: signed -> #{sig}")
+
+    # 8. outer txts
+    BootImage.copy_outer_txts!(boot_img, config_txt, cmdline_src)
+    Logger.info("nerves_sign: done")
     :ok
   end
+
+  defp resolve(nil, _base), do: Mix.raise("nerves_sign: missing required path in config")
+
+  defp resolve(path, base),
+    do: if(Path.type(path) == :absolute, do: path, else: Path.join(base, path))
+
+  defp resolve_fwup(board, nil, app_dir) do
+    project = Path.join(app_dir, "config/rpi4/boot_fwup.conf")
+    if File.exists?(project), do: project, else: board_file(board, "boot_fwup.conf")
+  end
+
+  defp resolve_fwup(_board, path, app_dir), do: resolve(path, app_dir)
 
   defp board_file(board, name) do
     Path.join([:code.priv_dir(:nerves_sign), Board.impl(board).priv_dir(), name])

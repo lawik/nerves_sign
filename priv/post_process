@@ -1,0 +1,20 @@
+#!/bin/sh
+# nerves_sign post-processing hook. Nerves runs this with the built rootfs
+# image path as the first argument. It bridges into Elixir and runs the
+# secure-boot pipeline (hash tree -> initramfs -> boot.img -> sign).
+#
+# Wired via:
+#   config :nerves, :firmware,
+#     post_processing_script: Path.expand("priv/nerves_sign/post_process")
+set -e
+
+FS_PATH="$1"
+echo "nerves_sign: post-processing ${FS_PATH}"
+
+# Run the Elixir side on the build host (the firmware is already built).
+ORIG_TARGET="${MIX_TARGET}"
+export MIX_TARGET=host
+mix run --no-start -e "NervesSign.run(\"${FS_PATH}\")"
+export MIX_TARGET="${ORIG_TARGET}"
+
+echo "nerves_sign: post-processing done"

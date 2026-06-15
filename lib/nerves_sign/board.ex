@@ -18,6 +18,14 @@ defmodule NervesSign.Board do
   @doc "musl toolchain triple, e.g. \"aarch64-nerves-linux-musl\"."
   @callback toolchain_triple() :: String.t()
 
+  @doc """
+  Pinned musl toolchain artifact, matching the nerves-project/toolchains
+  release: `%{version: \"14.2.0\", hash: \"4D401D0\"}`. Used by
+  `NervesSign.Toolchain` to fetch the same tarball the
+  `nerves_toolchain_*_musl` hex package wraps.
+  """
+  @callback toolchain() :: %{version: String.t(), hash: String.t()}
+
   @doc "Default dm-crypt cipher, e.g. \"aes-xts-plain64\"."
   @callback default_cipher() :: String.t()
 

@@ -13,6 +13,9 @@ defmodule NervesSign.Boards.RPi4 do
   def toolchain_triple, do: "aarch64-nerves-linux-musl"
 
   @impl true
+  def toolchain, do: %{version: "14.2.0", hash: "4D401D0"}
+
+  @impl true
   # cryptinit's default. Requires CRYPTO_XTS=y in the kernel.
   def default_cipher, do: "aes-xts-plain64"
 

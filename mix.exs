@@ -32,9 +32,10 @@ defmodule NervesSign.MixProject do
       # The runtime init we package. Pinned git dep until it stabilizes on hex.
       {:nerves_cryptinit, github: "fhunleth/nerves_cryptinit", runtime: false, app: false},
 
-      # musl cross-toolchain used to build the static initramfs binaries.
-      # Nerves' artifact machinery downloads/caches/checksums it for us.
-      {:nerves_toolchain_aarch64_nerves_linux_musl, "~> 14.2", runtime: false, targets: :rpi4},
+      # The musl cross-toolchain (same artifact as the
+      # nerves_toolchain_*_musl hex packages) is fetched on demand by
+      # NervesSign.Toolchain, pinned per board, so it works under any
+      # MIX_TARGET during post-processing without a target-gated dep.
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end

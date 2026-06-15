@@ -37,6 +37,11 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
       copy(Path.join(priv, src), dest)
     end
 
+    # Post-processing bridge script
+    bridge = Path.join(:code.priv_dir(:nerves_sign), "post_process")
+    copy(bridge, "priv/nerves_sign/post_process")
+    File.chmod("priv/nerves_sign/post_process", 0o755)
+
     Mix.shell().info("""
 
     Files generated. Add to your target config (e.g. config/rpi4.exs):
