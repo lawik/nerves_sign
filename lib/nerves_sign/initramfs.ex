@@ -49,12 +49,20 @@ defmodule NervesSign.Initramfs do
     # key_helper_source elsewhere, build that file directly.
     helper =
       if Path.basename(src) == "unlock.c" and File.exists?(Path.join(dir, "Makefile")) do
-        {_, 0} = System.cmd("make", ["-C", dir, "clean"], stderr_to_stdout: true)
-        {_, 0} = System.cmd("make", ["-C", dir, "CC=#{cc}"], stderr_to_stdout: true)
+        env = NervesSign.Build.clean_env()
+        {_, 0} = System.cmd("make", ["-C", dir, "clean"], stderr_to_stdout: true, env: env)
+
+        args = ["-C", dir, "CC=#{cc}", "CFLAGS=-Wall -Wextra -Os", "LDFLAGS=-static"]
+        {_, 0} = System.cmd("make", args, stderr_to_stdout: true, env: env)
         Path.join(dir, "unlock")
       else
         out = Path.join(Briefly.create!(directory: true), "unlock")
-        {_, 0} = System.cmd(cc, ["-Wall", "-Wextra", "-Os", "-static", "-o", out, src])
+
+        {_, 0} =
+          System.cmd(cc, ["-Wall", "-Wextra", "-Os", "-static", "-o", out, src],
+            env: NervesSign.Build.clean_env()
+          )
+
         out
       end
 

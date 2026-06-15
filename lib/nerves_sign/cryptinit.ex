@@ -16,9 +16,12 @@ defmodule NervesSign.Cryptinit do
     src = source_dir()
     Logger.info("nerves_sign: building cryptinit init (#{src})")
 
-    {_, 0} = System.cmd("make", ["-C", src, "clean"], stderr_to_stdout: true)
+    env = NervesSign.Build.clean_env()
+    {_, 0} = System.cmd("make", ["-C", src, "clean"], stderr_to_stdout: true, env: env)
 
-    case System.cmd("make", ["-C", src, "CC=#{cc}", "LDFLAGS=-static"], stderr_to_stdout: true) do
+    args = ["-C", src, "CC=#{cc}", "CFLAGS=-Wall -Wextra -Os", "LDFLAGS=-static"]
+
+    case System.cmd("make", args, stderr_to_stdout: true, env: env) do
       {_, 0} ->
         init = Path.join(src, "init")
         {_, 0} = System.cmd(strip, [init])
