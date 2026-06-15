@@ -7,3 +7,7 @@ erl_crash.dump
 *.ez
 nerves_sign-*.tar
 /tmp/
+
+# built helper binaries
+priv/boards/*/helpers/unlock
+priv/boards/*/helpers/*.o

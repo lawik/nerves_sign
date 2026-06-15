@@ -169,13 +169,18 @@ enlarged boot partition, and the loose-file boot layout.
 
 ## Milestones
 
-1. **Skeleton + lift** (this commit): mix project, modules with lifted
+1. **Skeleton + lift** (done): mix project, modules with lifted
    DmVerity/BootImage logic, rpi4 priv assets, gen task, this plan.
-2. **Toolchain + cryptinit build**: resolve musl toolchain via hex dep; build
-   cryptinit `init` static; measure the binary.
-3. **Initramfs assembly**: build `unlock` helper; assemble + gzip the CPIO;
-   measure real size; confirm the raw-kernel boot.img fits the default boot
-   partition.
+2. **Toolchain + cryptinit build** (done, measured 2026-06-15): built with the
+   musl Nerves toolchain `aarch64-nerves-linux-musl` (GCC 14.2, from the
+   v14.2.0 release). cryptinit `init` static = **139 KB (67 KB stripped)**;
+   our `unlock.c` static = **128 KB (67 KB stripped)**. Both link clean static.
+3. **Initramfs assembly** (done, measured): CPIO (init + unlock +
+   initramfs.conf + dirs) gzips to **~49 KB** (vs the old 11.4 MB). With a
+   **raw, uncompressed 12 MB kernel**, boot.img content = **14.63 MiB**, fits
+   the default **18.86 MiB** boot partition (nested boot.img + sig + outer txts)
+   with **~2.9 MiB free**. Conclusion: **gzipping the kernel is unnecessary**;
+   keep the kernel raw, ship the stock boot-partition size.
 4. **Cmdline + boot.img + sign**: inject `verity_roothash=`, build and sign
    boot.img with the new minimal layout.
 5. **End-to-end on a stock-ish RPi4 system** (entryfy_system_cm4 once cleaned):
