@@ -76,11 +76,56 @@ defmodule NervesSign.Initramfs do
   end
 
   defp pack(root, out) do
-    script = "find . -print0 | cpio --null -o --format=newc 2>/dev/null | gzip -9 > #{out}"
+    main = out <> ".main"
+    script = "find . -print0 | cpio --null -o --format=newc 2>/dev/null | gzip -9 > #{main}"
 
     case System.cmd("sh", ["-c", script], cd: root, stderr_to_stdout: true) do
-      {_, 0} -> :ok
-      {o, c} -> Mix.raise("nerves_sign: cpio assembly failed (#{c}):\n#{o}")
+      {_, 0} ->
+        File.write!(out, :zlib.gzip(device_nodes_cpio()) <> File.read!(main))
+        File.rm!(main)
+        :ok
+
+      {o, c} ->
+        Mix.raise("nerves_sign: cpio assembly failed (#{c}):\n#{o}")
+    end
+  end
+
+  # The kernel opens /dev/console for /init's stdio, and cryptinit opens
+  # /dev/kmsg in log_init(), both before devtmpfs is mounted. Without the
+  # device nodes in the archive every cryptinit message is silently lost
+  # ("Warning: unable to open an initial console"). mknod needs root, which
+  # the build doesn't have, so a tiny newc archive carrying just the nodes is
+  # synthesized byte-for-byte and prepended as its own gzip member: the
+  # kernel unpacks concatenated compressed archives.
+  defp device_nodes_cpio do
+    entries = [
+      {"dev", 0o040755, 0, 0},
+      {"dev/console", 0o020600, 5, 1},
+      {"dev/kmsg", 0o020644, 1, 11}
+    ]
+
+    body =
+      entries
+      |> Enum.with_index(1)
+      |> Enum.map(fn {{name, mode, rmaj, rmin}, ino} -> newc_entry(name, mode, rmaj, rmin, ino) end)
+
+    IO.iodata_to_binary(body ++ [newc_entry("TRAILER!!!", 0, 0, 0, 0)])
+  end
+
+  # newc header: magic then 13 8-digit hex fields: ino mode uid gid nlink
+  # mtime filesize devmajor devminor rdevmajor rdevminor namesize check.
+  defp newc_entry(name, mode, rmaj, rmin, ino) do
+    fields = [ino, mode, 0, 0, 1, 0, 0, 0, 0, rmaj, rmin, byte_size(name) + 1, 0]
+    header = "070701" <> Enum.map_join(fields, &hex8/1)
+    pad4(header <> name <> <<0>>)
+  end
+
+  defp hex8(n), do: n |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(8, "0")
+
+  defp pad4(bin) do
+    case rem(byte_size(bin), 4) do
+      0 -> bin
+      r -> bin <> :binary.copy(<<0>>, 4 - r)
     end
   end
 end
