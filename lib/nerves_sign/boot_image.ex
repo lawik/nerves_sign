@@ -59,8 +59,11 @@ defmodule NervesSign.BootImage do
            ]),
          {shasum, 0} <- System.cmd("sha256sum", [boot_img]),
          {hexsig, 0} <- System.shell("xxd -c 4096 -p < #{tmp_sig}") do
+      # rpi-eeprom-digest format: the first line is the bare hex digest.
+      # sha256sum appends "  <filename>", which the bootloader rejects.
+      digest = shasum |> String.split() |> hd()
       ts = DateTime.utc_now() |> DateTime.to_unix()
-      File.write!(sig_path, "#{shasum}ts: #{ts}\nrsa2048: #{hexsig}")
+      File.write!(sig_path, "#{digest}\nts: #{ts}\nrsa2048: #{hexsig}")
       {:ok, sig_path}
     else
       other -> Mix.raise("boot.img signing failed: #{inspect(other)}")
