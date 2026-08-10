@@ -32,6 +32,9 @@ defmodule NervesSign.MixProject do
       # The runtime init we package. Pinned git dep until it stabilizes on hex.
       {:nerves_cryptinit, github: "fhunleth/nerves_cryptinit", runtime: false, app: false},
 
+      # RPi4 EEPROM bootloader test double, drives the integration suite.
+      {:boot_double, path: "../boot_double", only: :test},
+
       # The musl cross-toolchain (same artifact as the
       # nerves_toolchain_*_musl hex packages) is fetched on demand by
       # NervesSign.Toolchain, pinned per board, so it works under any
