@@ -3,7 +3,7 @@ defmodule NervesSign.Integration.QemuBootTest do
   End-to-end runtime boot test on QEMU's `raspi4b` machine.
 
   Where `secure_boot_test.exs` validates the bootloader contract with
-  BootDouble (which stops where the VPU firmware hands off to the ARM cores),
+  BodgeRPiBootTest (which stops where the VPU firmware hands off to the ARM cores),
   this tier boots the ARM side for real: the kernel, initramfs and cmdline are
   extracted from the *signed* `boot.img` the pipeline produced, and the disk
   carries the verity-formatted rootfs. Success means the real kernel started
@@ -62,7 +62,7 @@ defmodule NervesSign.Integration.QemuBootTest do
 
     key = Path.join(root, "key.pem")
     pub = Path.join(root, "key.pub.pem")
-    :ok = BootDouble.generate_keys(key, pub)
+    :ok = BodgeRPiBootTest.generate_keys(key, pub)
 
     configure_nerves_sign!(sys, app, key)
 

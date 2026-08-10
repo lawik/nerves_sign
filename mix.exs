@@ -33,7 +33,7 @@ defmodule NervesSign.MixProject do
       {:nerves_cryptinit, github: "fhunleth/nerves_cryptinit", runtime: false, app: false},
 
       # RPi4 EEPROM bootloader test double, drives the integration suite.
-      {:boot_double, path: "../boot_double", only: :test},
+      {:bodge_rpiboottest, path: "../bodge_rpiboottest", only: :test},
 
       # The musl cross-toolchain (same artifact as the
       # nerves_toolchain_*_musl hex packages) is fetched on demand by

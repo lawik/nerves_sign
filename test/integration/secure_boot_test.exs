@@ -4,7 +4,7 @@ defmodule NervesSign.Integration.SecureBootTest do
 
   `NervesSign.PostProcess` runs against a fixture system (fake kernel/dtbs,
   tiny mksquashfs rootfs, throwaway RSA key), producing the real cryptinit
-  initramfs and a signed `boot.img`/`boot.sig`. BootDouble, the RPi4 EEPROM
+  initramfs and a signed `boot.img`/`boot.sig`. BodgeRPiBootTest, the RPi4 EEPROM
   bootloader test double, is the oracle: signed boot, tamper refusal, wrong
   OTP key refusal, and the tryboot A/B trial + commit cycle, all against a
   provisioned A/B disk image.
@@ -52,7 +52,7 @@ defmodule NervesSign.Integration.SecureBootTest do
 
     key = Path.join(root, "key.pem")
     pub = Path.join(root, "key.pub.pem")
-    :ok = BootDouble.generate_keys(key, pub)
+    :ok = BodgeRPiBootTest.generate_keys(key, pub)
 
     configure_nerves_sign!(sys, app, key)
 
@@ -76,9 +76,9 @@ defmodule NervesSign.Integration.SecureBootTest do
     assert File.exists?(Path.join(c.images, "outer_config.txt"))
     assert File.exists?(Path.join(c.images, "outer_cmdline.txt"))
 
-    # boot_double's verifier is byte-compatible with rpi-eeprom-digest, so
+    # bodge_rpiboottest's verifier is byte-compatible with rpi-eeprom-digest, so
     # this checks nerves_sign's signature against an independent implementation.
-    assert BootDouble.verify(c.boot_img, c.boot_sig, c.pub) == :ok
+    assert BodgeRPiBootTest.verify(c.boot_img, c.boot_sig, c.pub) == :ok
 
     # The verity root hash must ride the signed inner cmdline, on one line.
     inner = Path.join(c.root, "inner_cmdline.txt")
@@ -94,17 +94,17 @@ defmodule NervesSign.Integration.SecureBootTest do
 
   test "unprovisioned device boots the signed image (unenforced)", c do
     disk = ab_disk!(c, "unprovisioned")
-    r = BootDouble.boot(disk)
-    assert r.success, BootDouble.Report.format(r)
+    r = BodgeRPiBootTest.boot(disk)
+    assert r.success, BodgeRPiBootTest.Report.format(r)
     assert r.chosen.partition == 2
   end
 
   test "provisioned device verifies the signature and boots", c do
     disk = ab_disk!(c, "provisioned")
-    :ok = BootDouble.provision(disk, c.pub)
+    :ok = BodgeRPiBootTest.provision(disk, c.pub)
 
-    r = BootDouble.boot(disk)
-    assert r.success, BootDouble.Report.format(r)
+    r = BodgeRPiBootTest.boot(disk)
+    assert r.success, BodgeRPiBootTest.Report.format(r)
     assert r.chosen.partition == 2
     assert r.chosen.signed == 1
   end
@@ -116,44 +116,44 @@ defmodule NervesSign.Integration.SecureBootTest do
     tampered = <<pre::binary, rem(byte + 1, 256), post::binary>>
 
     disk = ab_disk!(c, "tampered", boot_img_a: tampered)
-    :ok = BootDouble.provision(disk, c.pub)
+    :ok = BodgeRPiBootTest.provision(disk, c.pub)
 
-    r = BootDouble.boot(disk)
-    refute r.success, BootDouble.Report.format(r)
+    r = BodgeRPiBootTest.boot(disk)
+    refute r.success, BodgeRPiBootTest.Report.format(r)
   end
 
   test "wrong OTP key refuses a correctly signed image", c do
     other_key = Path.join(c.root, "other.pem")
     other_pub = Path.join(c.root, "other.pub.pem")
-    :ok = BootDouble.generate_keys(other_key, other_pub)
+    :ok = BodgeRPiBootTest.generate_keys(other_key, other_pub)
 
     disk = ab_disk!(c, "wrong_key")
-    :ok = BootDouble.provision(disk, other_pub)
+    :ok = BodgeRPiBootTest.provision(disk, other_pub)
 
-    r = BootDouble.boot(disk)
-    refute r.success, BootDouble.Report.format(r)
+    r = BodgeRPiBootTest.boot(disk)
+    refute r.success, BodgeRPiBootTest.Report.format(r)
   end
 
   test "tryboot trial then commit makes B the default", c do
     disk = ab_disk!(c, "tryboot")
-    :ok = BootDouble.provision(disk, c.pub)
+    :ok = BodgeRPiBootTest.provision(disk, c.pub)
 
-    r1 = BootDouble.boot(disk)
-    assert r1.success, BootDouble.Report.format(r1)
+    r1 = BodgeRPiBootTest.boot(disk)
+    assert r1.success, BodgeRPiBootTest.Report.format(r1)
     assert r1.chosen.partition == 2
 
     # Trial boot of the B slot: one-shot flag, cleared before the firmware
     # starts so a crash reverts to A.
-    r2 = BootDouble.reboot(disk, "0 tryboot")
-    assert r2.success, BootDouble.Report.format(r2)
+    r2 = BodgeRPiBootTest.reboot(disk, "0 tryboot")
+    assert r2.success, BodgeRPiBootTest.Report.format(r2)
     assert r2.chosen.partition == 3
     assert r2.chosen.tryboot == 1
 
     # Validate: swap the A/B roles in autoboot.txt.
-    :ok = BootDouble.commit(disk)
+    :ok = BodgeRPiBootTest.commit(disk)
 
-    r3 = BootDouble.power_cycle(disk)
-    assert r3.success, BootDouble.Report.format(r3)
+    r3 = BodgeRPiBootTest.power_cycle(disk)
+    assert r3.success, BodgeRPiBootTest.Report.format(r3)
     assert r3.chosen.partition == 3
     assert r3.chosen.tryboot == 0
   end
@@ -273,7 +273,7 @@ defmodule NervesSign.Integration.SecureBootTest do
     slot_b = Map.put(slot_common, "boot.img", File.read!(c.boot_img))
 
     :ok =
-      BootDouble.build_disk(disk, [
+      BodgeRPiBootTest.build_disk(disk, [
         %{
           size_mb: 8,
           files: %{"autoboot.txt" => @autoboot, "start4.elf" => "elf", "config.txt" => ""}
