@@ -15,8 +15,9 @@ defmodule NervesSign.PostProcess do
   """
   require Logger
 
+  alias NervesSign.Boards.RPi.BootImage
+
   alias NervesSign.{
-    BootImage,
     Cmdline,
     Cryptinit,
     DmVerity,

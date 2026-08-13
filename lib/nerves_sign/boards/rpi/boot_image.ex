@@ -1,10 +1,16 @@
-defmodule NervesSign.BootImage do
+defmodule NervesSign.Boards.RPi.BootImage do
   @moduledoc """
-  Assemble and sign the RPi `boot.img`.
+  Assemble and sign the Raspberry Pi `boot.img`.
 
-  fwup packs the kernel, the initramfs CPIO, device trees, and the inner
-  config.txt/cmdline.txt into a FAT image (`boot.img`), which is then signed
-  RSA-2048/SHA-256 in the Raspberry Pi bootloader format (`boot.sig`).
+  Family-wide, not per board: the signed-ramdisk scheme is a property of the Pi
+  bootloader EEPROM, so every Pi that supports secure boot (4, CM4, 5, CM5)
+  uses this same shape. fwup packs the kernel, the initramfs CPIO, device trees
+  and the inner config.txt/cmdline.txt into a FAT image, which is then signed
+  RSA-2048/SHA-256 in the `rpi-eeprom-digest` format the bootloader expects.
+  Which files go in is the board's business, and lives in its fwup config.
+
+  Nothing here transfers off the Pi. Another vendor's secure boot signs a
+  different container with a different tool into a different format.
 
   Lifted from ex_verity `Rpi4SecureBoot`.
   """
@@ -47,18 +53,16 @@ defmodule NervesSign.BootImage do
     sig_path = Path.join(Path.dirname(boot_img), "boot.sig")
     tmp_sig = Briefly.create!()
 
+    # stderr is captured throughout: openssl explains a bad key there, and
+    # without it a failure raises an exit code and nothing to act on.
     with {_, 0} <-
-           System.cmd("openssl", [
-             "dgst",
-             "-sha256",
-             "-sign",
-             private_key_path,
-             "-out",
-             tmp_sig,
-             boot_img
-           ]),
-         {shasum, 0} <- System.cmd("sha256sum", [boot_img]),
-         {hexsig, 0} <- System.shell("xxd -c 4096 -p < #{tmp_sig}") do
+           System.cmd(
+             "openssl",
+             ["dgst", "-sha256", "-sign", private_key_path, "-out", tmp_sig, boot_img],
+             stderr_to_stdout: true
+           ),
+         {shasum, 0} <- System.cmd("sha256sum", [boot_img], stderr_to_stdout: true),
+         {hexsig, 0} <- System.shell("xxd -c 4096 -p < #{tmp_sig}", stderr_to_stdout: true) do
       # rpi-eeprom-digest format: the first line is the bare hex digest.
       # sha256sum appends "  <filename>", which the bootloader rejects.
       digest = shasum |> String.split() |> hd()
