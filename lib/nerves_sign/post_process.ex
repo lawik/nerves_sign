@@ -7,14 +7,24 @@ defmodule NervesSign.PostProcess do
     2. resolve musl toolchain                   (Toolchain)
     3. build cryptinit init                     (Cryptinit)
     4. inject verity_roothash= into cmdline     (Cmdline)
-    5. build helper + assemble initramfs.cpio.gz (Initramfs)
-    6. build boot.img                           (BootImage)
-    7. sign -> boot.sig                          (BootImage)
-    8. copy outer config.txt/cmdline.txt
+    5. validate the config against boot.img     (Preflight)
+    6. build helper + assemble initramfs.cpio.gz (Initramfs)
+    7. build boot.img                           (BootImage)
+    8. sign -> boot.sig                          (BootImage)
+    9. copy outer config.txt/cmdline.txt
   """
   require Logger
 
-  alias NervesSign.{Board, BootImage, Cmdline, Cryptinit, DmVerity, Initramfs, Toolchain}
+  alias NervesSign.{
+    BootImage,
+    Cmdline,
+    Cryptinit,
+    DmVerity,
+    Initramfs,
+    Paths,
+    Preflight,
+    Toolchain
+  }
 
   @doc "Run the pipeline against the built rootfs at `rootfs_path`."
   def run(rootfs_path) do
@@ -34,23 +44,46 @@ defmodule NervesSign.PostProcess do
     init = Cryptinit.build(toolchain)
 
     # 4. inner cmdline with the trust anchor
-    cmdline_src = resolve(sb[:cmdline_txt_path] || "config/rpi4/cmdline.txt", app_dir)
+    cmdline_src = Paths.resolve(sb[:cmdline_txt_path] || "config/rpi4/cmdline.txt", app_dir)
+    rendered_cmdline = Cmdline.with_roothash(cmdline_src, root_hash)
     inner_cmdline = Briefly.create!()
-    File.write!(inner_cmdline, Cmdline.with_roothash(cmdline_src, root_hash))
+    File.write!(inner_cmdline, rendered_cmdline)
 
-    # 5. initramfs
-    conf = resolve(sb[:initramfs_conf] || "config/rpi4/initramfs.conf", app_dir)
+    # 5. everything that would only surface as a silently unverified device
+    config_txt = Paths.resolve(sb[:config_txt_path] || "config/rpi4/config.txt", app_dir)
 
+    boot_fwup =
+      Paths.project_or_board(
+        board,
+        sb[:boot_fwup_conf],
+        app_dir,
+        "config/rpi4/boot_fwup.conf",
+        "boot_fwup.conf"
+      )
+
+    :ok =
+      Preflight.check!(board, %{
+        board: board,
+        cmdline: rendered_cmdline,
+        config_txt: config_txt,
+        boot_fwup_conf: boot_fwup,
+        app_dir: app_dir
+      })
+
+    # 6. initramfs
     conf =
-      if File.exists?(conf), do: conf, else: board_file(board, "initramfs.conf")
+      Paths.project_or_board(
+        board,
+        sb[:initramfs_conf],
+        app_dir,
+        "config/rpi4/initramfs.conf",
+        "initramfs.conf"
+      )
 
     cpio =
       Initramfs.assemble(%{board: board, toolchain: toolchain, init: init, initramfs_conf: conf})
 
-    # 6. boot.img
-    config_txt = resolve(sb[:config_txt_path] || "config/rpi4/config.txt", app_dir)
-    boot_fwup = resolve_fwup(board, sb[:boot_fwup_conf], app_dir)
-
+    # 7. boot.img
     {:ok, boot_img} =
       BootImage.build(system_path, boot_fwup, %{
         config_txt: config_txt,
@@ -61,29 +94,13 @@ defmodule NervesSign.PostProcess do
 
     Logger.info("nerves_sign: built #{boot_img} (#{File.stat!(boot_img).size} bytes)")
 
-    # 7. sign
-    {:ok, sig} = BootImage.sign(boot_img, resolve(sb[:private_key_path], app_dir))
+    # 8. sign
+    {:ok, sig} = BootImage.sign(boot_img, Paths.resolve(sb[:private_key_path], app_dir))
     Logger.info("nerves_sign: signed -> #{sig}")
 
-    # 8. outer txts
+    # 9. outer txts
     BootImage.copy_outer_txts!(boot_img, config_txt, cmdline_src)
     Logger.info("nerves_sign: done")
     :ok
-  end
-
-  defp resolve(nil, _base), do: Mix.raise("nerves_sign: missing required path in config")
-
-  defp resolve(path, base),
-    do: if(Path.type(path) == :absolute, do: path, else: Path.join(base, path))
-
-  defp resolve_fwup(board, nil, app_dir) do
-    project = Path.join(app_dir, "config/rpi4/boot_fwup.conf")
-    if File.exists?(project), do: project, else: board_file(board, "boot_fwup.conf")
-  end
-
-  defp resolve_fwup(_board, path, app_dir), do: resolve(path, app_dir)
-
-  defp board_file(board, name) do
-    Path.join([:code.priv_dir(:nerves_sign), Board.impl(board).priv_dir(), name])
   end
 end

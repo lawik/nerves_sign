@@ -37,4 +37,7 @@ defmodule NervesSign.Boards.RPi4 do
 
   @impl true
   def default_key_helper_source, do: "boards/rpi4/helpers/unlock.c"
+
+  @impl true
+  defdelegate preflight!(ctx), to: NervesSign.Boards.RPi4.Preflight, as: :check!
 end

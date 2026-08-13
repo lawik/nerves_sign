@@ -38,6 +38,34 @@ defmodule NervesSign.Board do
   @doc "Default key-helper C source, priv-relative (e.g. \"boards/rpi4/helpers/unlock.c\")."
   @callback default_key_helper_source() :: Path.t()
 
+  @doc """
+  Validate the board's boot firmware contract before anything is signed.
+
+  This is the half of preflight that cannot be shared: how a ROM or firmware
+  locates the kernel, the initramfs and the cmdline is board-specific to the
+  bone. The RPi firmware parses `config.txt` out of the FAT boot image; an
+  i.MX HAB/TrustZone chain validates a signed container and has no `config.txt`
+  at all. `NervesSign.Preflight` runs the board-agnostic cryptinit cmdline
+  checks and then calls this.
+
+  `ctx` is the resolved build context. Read the keys you need and ignore the
+  rest — it is a map precisely so new keys can be added without breaking
+  boards. Currently supplied:
+
+    * `:board` - the board atom in play (`:rpi4` and `:cm4` share a module)
+    * `:cmdline` - the rendered kernel cmdline, root hash already injected
+    * `:config_txt` - resolved path to the project's boot config, if the board
+      has such a thing
+    * `:boot_fwup_conf` - resolved path to the boot image's fwup config
+    * `:app_dir` - the firmware project root
+
+  Raise (via `Mix.raise/1`) on anything that would not boot; log a warning for
+  the merely suspicious. Return `:ok`. A board with nothing to check should say
+  so explicitly — in secure boot, "nothing to validate" is a decision worth
+  writing down rather than a default worth inheriting.
+  """
+  @callback preflight!(ctx :: map()) :: :ok
+
   # --- resolution: project config overrides board defaults -------------------
 
   @doc """

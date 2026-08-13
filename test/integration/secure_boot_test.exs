@@ -19,7 +19,7 @@ defmodule NervesSign.Integration.SecureBootTest do
   @moduletag :integration
   @moduletag timeout: 300_000
 
-  tools = ~w(veritysetup mksquashfs fwup mcopy cpio gzip make)
+  tools = ~w(veritysetup mksquashfs fwup mcopy mdir cpio gzip make)
   missing = Enum.reject(tools, &System.find_executable/1)
 
   if missing != [] do
@@ -81,15 +81,78 @@ defmodule NervesSign.Integration.SecureBootTest do
     assert BodgeRPiBootTest.verify(c.boot_img, c.boot_sig, c.pub) == :ok
 
     # The verity root hash must ride the signed inner cmdline, on one line.
-    inner = Path.join(c.root, "inner_cmdline.txt")
-    {_, 0} = System.cmd("mcopy", ["-n", "-i", c.boot_img, "::cmdline.txt", inner])
-    cmdline = File.read!(inner)
+    cmdline = extract!(c, "cmdline.txt")
     assert cmdline =~ ~r/verity_roothash=[0-9a-f]{64}/
     refute String.trim(cmdline) =~ "\n"
 
     # The whole point of the cryptinit initramfs: boot.img fits the stock
     # 18.86 MiB Nerves boot partition.
     assert File.stat!(c.boot_img).size <= 38_630 * 512
+  end
+
+  test "boot.img carries every file its config.txt points at", c do
+    listing = mdir!(c.boot_img)
+
+    # Not just "it built": the firmware resolves these names at boot, and a
+    # missing initramfs boots straight past dm-verity without complaining.
+    for name <- ~w(Image rootfs.cpio.gz config.txt cmdline.txt) do
+      assert name in listing, "#{name} missing from boot.img (have: #{inspect(listing)})"
+    end
+
+    # Overlays go in overlays/ to match mainline nerves_system_rpi4, and
+    # ramoops is renamed from .dtb to .dtbo on the way in.
+    for name <- ~w(overlays/overlay_map.dtb overlays/vc4-kms-v3d.dtbo overlays/ramoops.dtbo) do
+      assert name in listing, "#{name} missing from boot.img"
+    end
+  end
+
+  test "the initramfs inside the signed image is the one that was built", c do
+    cpio_gz = Path.join(c.root, "extracted.cpio.gz")
+    {_, 0} = System.cmd("mcopy", ["-n", "-i", c.boot_img, "::rootfs.cpio.gz", cpio_gz])
+
+    # Two concatenated archives: the synthesized device nodes, then the real
+    # one. The kernel unpacks both; cpio stops at the first TRAILER, so each
+    # member is listed separately.
+    raw = cpio_gz |> File.read!() |> :zlib.gunzip()
+    {nodes, main} = split_at_trailer(raw)
+
+    # Without these cryptinit comes up with no console and logs nowhere.
+    node_listing = cpio_list(c, nodes)
+    assert node_listing =~ ~r/^c.*\s5,\s*1\s.*dev\/console$/m
+    assert node_listing =~ ~r/^c.*\s1,\s*11\s.*dev\/kmsg$/m
+
+    listing = cpio_list(c, main)
+    assert listing =~ ~r/\sinit$/m
+    assert listing =~ ~r/usr\/sbin\/unlock$/m
+    assert listing =~ ~r/etc\/initramfs.conf$/m
+
+    # /init is what the kernel execs, so it has to be executable.
+    assert listing =~ ~r/^-rwxr-xr-x.*\sinit$/m
+  end
+
+  test "boot.img still has room for a kernel that grows", c do
+    # The FAT is a fixed size, so asserting on the image's own size only
+    # re-reads a define in boot_fwup.conf. What can actually break a build is
+    # the content outgrowing it, which is the free space.
+    {out, 0} = System.cmd("mdir", ["-i", c.boot_img, "::"], stderr_to_stdout: true)
+
+    [_, free] = Regex.run(~r/([\d ]+) bytes free/, out)
+    free = free |> String.replace(" ", "") |> String.to_integer()
+
+    assert free > 1_000_000,
+           "only #{div(free, 1024)} KiB free in boot.img; bump COUNT in boot_fwup.conf"
+  end
+
+  test "the outer txts are what the firmware needs to find boot.img", c do
+    outer_config = File.read!(Path.join(c.images, "outer_config.txt"))
+
+    # An unprovisioned dev board will not load the ramdisk without this.
+    assert outer_config =~ "boot_ramdisk=1"
+
+    # The outer cmdline is the untouched template: the signed inner one is what
+    # the kernel actually gets, and that is where the trust anchor lives.
+    outer_cmdline = File.read!(Path.join(c.images, "outer_cmdline.txt"))
+    refute outer_cmdline =~ "verity_roothash="
   end
 
   test "unprovisioned device boots the signed image (unenforced)", c do
@@ -158,6 +221,42 @@ defmodule NervesSign.Integration.SecureBootTest do
     assert r3.chosen.tryboot == 0
   end
 
+  # A newc entry is a 110-byte header plus the name, padded to 4 bytes. The
+  # first archive ends after its TRAILER!!! entry; the rest is the next member.
+  defp split_at_trailer(raw) do
+    {pos, _} = :binary.match(raw, "TRAILER!!!")
+    entry_end = pos + 11
+    end_of_archive = entry_end + rem(4 - rem(entry_end, 4), 4)
+
+    {binary_part(raw, 0, end_of_archive),
+     binary_part(raw, end_of_archive, byte_size(raw) - end_of_archive)}
+  end
+
+  defp cpio_list(c, archive) do
+    path = Path.join(c.root, "member_#{:erlang.phash2(archive)}.cpio")
+    File.write!(path, archive)
+    {listing, 0} = System.cmd("sh", ["-c", "cpio -tv < #{path} 2>&1"], stderr_to_stdout: true)
+    listing
+  end
+
+  defp extract!(c, name) do
+    out = Path.join(c.root, "extracted_#{Path.basename(name)}")
+    {_, 0} = System.cmd("mcopy", ["-n", "-i", c.boot_img, "::#{name}", out])
+    File.read!(out)
+  end
+
+  # Every file in the FAT image, with overlays/ entries as "overlays/<name>".
+  defp mdir!(boot_img) do
+    {root, 0} = System.cmd("mdir", ["-b", "-i", boot_img, "::"], stderr_to_stdout: true)
+
+    {overlays, 0} =
+      System.cmd("mdir", ["-b", "-i", boot_img, "::/overlays"], stderr_to_stdout: true)
+
+    for line <- String.split(root <> overlays, "\n", trim: true) do
+      line |> String.trim() |> String.trim_leading("::/")
+    end
+  end
+
   # -- fixtures ---------------------------------------------------------------
 
   defp fixture_system!(root) do
@@ -179,19 +278,28 @@ defmodule NervesSign.Integration.SecureBootTest do
     conf = Path.join(app, "config/rpi4")
     File.mkdir_p!(conf)
 
+    # root= names the partition holding the verity-formatted rootfs, not a dm
+    # node: cryptinit reads this to find the backing device and creates /dev/dm-N
+    # itself. `ro` because the verity device it hands us is read-only.
     File.write!(
       Path.join(conf, "cmdline.txt"),
-      "console=ttyS0,115200 root=/dev/dm-0 rootfstype=squashfs rootwait quiet\n"
+      "console=ttyS0,115200 root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait quiet\n"
     )
 
     # boot_ramdisk=1 makes an unprovisioned (SIGNED_BOOT=0) bootloader load
     # boot.img; provisioned devices load it regardless. nerves_sign copies
     # this same file as the outer config.txt, so the ramdisk flag is required
     # here for dev boards to boot the ramdisk.
+    #
+    # The initramfs and cmdline lines are what make the firmware load cryptinit
+    # and pass it the signed root hash. Without them this still builds and
+    # signs, and boots straight past dm-verity.
     File.write!(Path.join(conf, "config.txt"), """
     arm_64bit=1
     boot_ramdisk=1
     kernel=Image
+    initramfs rootfs.cpio.gz
+    cmdline=cmdline.txt
     """)
 
     app
@@ -269,7 +377,9 @@ defmodule NervesSign.Integration.SecureBootTest do
       "cmdline.txt" => File.read!(Path.join(c.images, "outer_cmdline.txt"))
     }
 
-    slot_a = Map.put(slot_common, "boot.img", Keyword.get(opts, :boot_img_a, File.read!(c.boot_img)))
+    slot_a =
+      Map.put(slot_common, "boot.img", Keyword.get(opts, :boot_img_a, File.read!(c.boot_img)))
+
     slot_b = Map.put(slot_common, "boot.img", File.read!(c.boot_img))
 
     :ok =

@@ -6,6 +6,12 @@ initramfs rootfs.cpio.gz
 cmdline=cmdline.txt
 uart_2ndstage=1
 
+# nerves_sign copies this same file out as the outer config.txt, which is what
+# the firmware reads before it loads boot.img. A provisioned device
+# (SIGNED_BOOT=1) loads the ramdisk regardless, but an unprovisioned one — any
+# dev board without the key burned in — needs this or it never loads boot.img.
+boot_ramdisk=1
+
 # 64-bit
 arm_64bit=1
 
