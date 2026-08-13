@@ -1,12 +1,22 @@
-defmodule NervesSign.Boards.RPi4.Preflight do
+defmodule NervesSign.Boards.RPi.Preflight do
   @moduledoc """
-  The RPi4/CM4 boot firmware contract: what `config.txt` has to say for the
+  The Raspberry Pi boot firmware contract: what `config.txt` has to say for the
   firmware to load the kernel and the cryptinit initramfs out of `boot.img`.
 
-  Entirely Raspberry Pi specific — the VideoCore firmware reads `config.txt`
-  from the FAT image before the ARM cores start. Filenames are read out of the
-  board's fwup config rather than hardcoded, so a project that renamed
-  resources in its own `boot_fwup.conf` validates against its own layout.
+  This is the **whole Pi family**, not one board. Every Pi boots the same way —
+  the VideoCore firmware reads `config.txt` off the FAT boot filesystem and
+  acts on it before the ARM cores start — so the directives, their defaults and
+  their failure modes are identical from a Pi 3 to a CM5. What differs per
+  board is the *content*: which kernel, which dtbs, which firmware blobs. None
+  of that is here.
+
+  Nothing in this module is portable beyond the Pi. An i.MX HAB or TrustZone
+  chain has no `config.txt`, no VideoCore, and no FAT boot filesystem to read
+  one from; it would implement `c:NervesSign.Board.preflight!/1` from scratch.
+
+  Filenames are read out of the board's fwup config rather than hardcoded, so a
+  project that renamed resources in its own `boot_fwup.conf` validates against
+  its own layout.
 
   Known limitation: RPi conditional filters (`[cm4]`, `[all]`, ...) are not
   interpreted. Directives are matched anywhere in the file, so a setting that
@@ -16,8 +26,8 @@ defmodule NervesSign.Boards.RPi4.Preflight do
 
   alias NervesSign.Fwup
 
-  # The firmware's own defaults when config.txt does not say. arm_64bit=1,
-  # which every board we support sets, selects kernel8.img.
+  # The firmware's own defaults when config.txt does not say. On any 64-bit Pi
+  # (arm_64bit=1) the default kernel name is kernel8.img.
   @default_kernel "kernel8.img"
   @default_cmdline "cmdline.txt"
 

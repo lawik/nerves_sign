@@ -4,7 +4,8 @@ defmodule NervesSign.PreflightTest do
   kernel cmdline. These hold for any board that boots the init we package, so
   they stay here rather than moving into a board.
 
-  The RPi4 boot firmware contract lives in `NervesSign.Boards.RPi4.PreflightTest`.
+  The Raspberry Pi boot firmware contract lives in
+  `NervesSign.Boards.RPi.PreflightTest`.
   """
   use ExUnit.Case, async: false
 

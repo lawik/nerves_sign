@@ -2,14 +2,17 @@ defmodule NervesSign.Integration.QemuBootTest do
   @moduledoc """
   End-to-end runtime boot test on QEMU's `raspi4b` machine.
 
-  Where `secure_boot_test.exs` validates the bootloader contract with
-  BodgeRPiBootTest (which stops where the VPU firmware hands off to the ARM cores),
-  this tier boots the ARM side for real: the kernel, initramfs and cmdline are
-  extracted from the *signed* `boot.img` the pipeline produced, and the disk
-  carries the verity-formatted rootfs. Success means the real kernel started
-  cryptinit, cryptinit opened dm-verity with the root hash from the signed
-  cmdline, mounted the squashfs through it, switch_rooted and exec'd our
-  marker `/sbin/init`.
+  This is the full chain, end to end. BodgeRPiBootTest boots a real A/B disk:
+  it reads `autoboot.txt`, picks a partition, verifies `boot.sig` against the
+  simulated OTP key and extracts the kernel, initramfs and cmdline out of the
+  *signed* `boot.img`. Those artifacts — the ones the bootloader actually
+  chose, not ones the test picked — are then handed to QEMU, which is where the
+  real VPU firmware would hand off to the ARM cores.
+
+  Success means the real kernel started cryptinit, cryptinit opened dm-verity
+  with the root hash from the signed cmdline, mounted the squashfs through it,
+  switch_rooted and exec'd our marker `/sbin/init`. A wrong partition choice, a
+  bad signature or a missing initramfs shows up here as a failed Linux boot.
 
   Needs a real Nerves system's images dir (kernel with the dm bits =y):
 
@@ -17,6 +20,8 @@ defmodule NervesSign.Integration.QemuBootTest do
         mix test --include integration test/integration/qemu_boot_test.exs
   """
   use ExUnit.Case, async: false
+
+  alias BodgeRPiBootTest.Qemu
 
   @moduletag :integration
   @moduletag timeout: 600_000
@@ -40,6 +45,9 @@ defmodule NervesSign.Integration.QemuBootTest do
 
     not File.dir?(Path.join(Mix.Project.deps_path(), "nerves_cryptinit/src")) ->
       @moduletag skip: "nerves_cryptinit dep not fetched (run mix deps.get)"
+
+    not BodgeRPiBootTest.Qemu.available?() ->
+      @moduletag skip: "qemu-system-aarch64 has no raspi4b machine (needs QEMU 9.0+)"
 
     true ->
       :ok
@@ -69,69 +77,51 @@ defmodule NervesSign.Integration.QemuBootTest do
     :ok = NervesSign.PostProcess.run(rootfs)
 
     images = Path.join(sys, "images")
-    boot_img = Path.join(images, "boot.img")
+    disk = build_ab_disk!(root, images, rootfs)
 
-    # The pieces that boot are the ones inside the signed image.
-    extracted = Path.join(root, "extracted")
-    File.mkdir_p!(extracted)
+    # Burn the customer key into the simulated OTP and turn on signed boot, so
+    # the bootloader actually enforces boot.sig rather than waving it through.
+    :ok = BodgeRPiBootTest.provision(disk, pub)
 
-    for f <- ~w(Image rootfs.cpio.gz cmdline.txt) do
-      {_, 0} = System.cmd("mcopy", ["-n", "-i", boot_img, "::#{f}", Path.join(extracted, f)])
-    end
-
-    sd = build_sd!(root, rootfs)
-
-    {:ok,
-     root: root,
-     dtb: Path.join(images, "bcm2711-rpi-4-b.dtb"),
-     kernel: Path.join(extracted, "Image"),
-     initrd: Path.join(extracted, "rootfs.cpio.gz"),
-     cmdline: extracted |> Path.join("cmdline.txt") |> File.read!() |> String.trim(),
-     sd: sd}
+    {:ok, root: root, disk: disk, dtb: Path.join(images, "bcm2711-rpi-4-b.dtb")}
   end
 
-  test "signed boot.img contents boot to userspace on qemu raspi4b", c do
-    assert c.cmdline =~ ~r/verity_roothash=[0-9a-f]{64}/
+  test "the partition bodge selected boots to userspace on qemu raspi4b", c do
+    # 1. The bootloader half: partition selection and signature verification.
+    report = BodgeRPiBootTest.boot(c.disk)
 
-    log = Path.join(c.root, "qemu.log")
+    assert report.success, """
+    bodge refused to boot the disk:
+      reason: #{inspect(report.reason)}
+      trace:
+        #{Enum.join(report.trace, "\n    ")}
+    """
 
-    {_, status} =
-      System.cmd(
-        "timeout",
-        [
-          "300",
-          "qemu-system-aarch64",
-          "-M",
-          "raspi4b",
-          "-kernel",
-          c.kernel,
-          "-dtb",
-          c.dtb,
-          "-initrd",
-          c.initrd,
-          "-append",
-          c.cmdline,
-          "-drive",
-          "file=#{c.sd},if=sd,format=raw",
-          "-display",
-          "none",
-          # The miniuart (ttyS0) is the SECOND serial on QEMU's raspi machines.
-          "-serial",
-          "null",
-          "-serial",
-          "stdio",
-          "-no-reboot",
-          "-monitor",
-          "none"
-        ],
-        into: File.stream!(log),
-        stderr_to_stdout: true
-      )
+    assert report.chosen.partition == 2, "expected autoboot.txt to select slot A"
+    assert report.chosen.signed == 1, "expected signed boot to be enforced"
 
-    output = File.read!(log)
+    # It handed over everything the ARM side needs, out of the signed image.
+    assert report.kernel_path
+
+    assert report.initramfs_path,
+           "cryptinit lives in the initramfs; nothing to hand off without it"
+
+    assert report.chosen.cmdline =~ ~r/verity_roothash=[0-9a-f]{64}/
+
+    # 2. The QEMU half: continue from exactly those artifacts.
+    result = Qemu.run(report, c.disk, await: @marker, timeout: 300_000)
+
+    output =
+      case result do
+        {:ok, output} -> output
+        {:timeout, output} -> output
+        {:error, reason} -> flunk("qemu handoff failed: #{inspect(reason)}")
+      end
+
+    File.write!(Path.join(c.root, "qemu.log"), output)
 
     assert output =~ @marker, """
-    marker not found (qemu exit #{status}); last lines of console:
+    marker not found; last lines of console:
 
     #{output |> String.split("\n") |> Enum.take(-160) |> Enum.join("\n")}
     """
@@ -168,12 +158,13 @@ defmodule NervesSign.Integration.QemuBootTest do
     # matching real Nerves rpi4 serial. "serial0" is an alias only the real
     # firmware rewrites, so the tty is named directly. earlycon catches
     # crashes before the console driver starts. root=mmcblk1p2 because QEMU's
-    # raspi4b exposes the SD on the mmc1 controller (real hardware: mmcblk0).
+    # raspi4b exposes the SD on the mmc1 controller (real hardware: mmcblk0);
+    # p4 because p1..p3 are the AUTOBOOT and A/B boot partitions.
     # Signed as-is, boots as-is.
     File.write!(
       Path.join(conf, "cmdline.txt"),
       "earlycon=uart8250,mmio32,0xfe215040 console=ttyS0,115200 " <>
-        "root=/dev/mmcblk1p2 rootfstype=squashfs ro rootwait\n"
+        "root=/dev/mmcblk1p4 rootfstype=squashfs ro rootwait\n"
     )
 
     File.write!(Path.join(conf, "config.txt"), """
@@ -279,35 +270,43 @@ defmodule NervesSign.Integration.QemuBootTest do
     end)
   end
 
-  # 64 MiB SD (QEMU wants power-of-two): p1 dummy FAT, p2 the verity rootfs
-  # (squashfs + appended hash tree) at the offset cmdline's root= expects.
-  defp build_sd!(root, rootfs) do
-    sd = Path.join(root, "sd.img")
-    {_, 0} = System.cmd("truncate", ["-s", "64M", sd])
+  # The same A/B layout secure_boot_test.exs builds — outer txts and a
+  # start4.elf stub in each slot, 8 MB autoboot + 32 MB slots — plus the verity
+  # rootfs the signed cmdline points at. Padded to a power of two because QEMU
+  # rejects odd-sized SD cards.
+  defp build_ab_disk!(root, images, rootfs) do
+    disk = Path.join(root, "disk.img")
 
-    script = """
-    label: dos
-    unit: sectors
-
-    p1 : start=2048, size=32768, type=c
-    p2 : start=34816, size=94208, type=83
+    autoboot = """
+    [all]
+    tryboot_a_b=1
+    boot_partition=2
+    [tryboot]
+    boot_partition=3
     """
 
-    {_, 0} = System.shell("echo '#{script}' | sfdisk --no-reread #{sd}", stderr_to_stdout: true)
+    slot = %{
+      "start4.elf" => "elf",
+      "boot.img" => File.read!(Path.join(images, "boot.img")),
+      "boot.sig" => File.read!(Path.join(images, "boot.sig")),
+      "config.txt" => File.read!(Path.join(images, "outer_config.txt")),
+      "cmdline.txt" => File.read!(Path.join(images, "outer_cmdline.txt"))
+    }
 
-    rootfs_size = File.stat!(rootfs).size
-    true = rootfs_size <= 94_208 * 512
-
-    {_, 0} =
-      System.cmd("dd", [
-        "if=#{rootfs}",
-        "of=#{sd}",
-        "bs=512",
-        "seek=34816",
-        "conv=notrunc",
-        "status=none"
+    :ok =
+      BodgeRPiBootTest.build_disk(disk, [
+        %{
+          size_mb: 8,
+          files: %{"autoboot.txt" => autoboot, "start4.elf" => "elf", "config.txt" => ""}
+        },
+        %{size_mb: 32, files: slot},
+        %{size_mb: 32, files: slot},
+        # 46 MB: the rootfs size this test already used before the A/B layout.
+        %{size_mb: 46, type: 0x83, raw: rootfs}
       ])
 
-    sd
+    {_, 0} = System.cmd("truncate", ["-s", "128M", disk])
+
+    disk
   end
 end

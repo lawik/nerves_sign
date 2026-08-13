@@ -1,9 +1,12 @@
-defmodule NervesSign.Boards.RPi4.PreflightTest do
+defmodule NervesSign.Boards.RPi.PreflightTest do
   @moduledoc """
-  The RPi4 boot firmware contract. This is the board-specific half — the
+  The Raspberry Pi boot firmware contract — family-wide, not one board. The
   VideoCore firmware reads config.txt out of the FAT image before the ARM cores
   start, and a config that never names the initramfs produces an image that
   builds, signs, verifies, and boots straight past dm-verity.
+
+  Exercised through `NervesSign.Boards.RPi4` since that is the board that
+  exists, but nothing here is rpi4-specific: the same contract holds for any Pi.
   """
   use ExUnit.Case, async: false
 
