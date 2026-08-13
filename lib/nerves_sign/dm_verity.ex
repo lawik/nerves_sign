@@ -26,15 +26,19 @@ defmodule NervesSign.DmVerity do
     %{size: data_size} = File.stat!(fs_path)
     Logger.info("dm-verity: formatting #{fs_path} (#{data_size} bytes, offset #{data_size})")
 
-    case System.cmd("veritysetup", [
-           "format",
-           fs_path,
-           fs_path,
-           "--data-block-size=#{block_size}",
-           "--hash-block-size=#{block_size}",
-           "--hash-offset=#{data_size}",
-           "--root-hash-file=#{root_hash_path}"
-         ]) do
+    case System.cmd(
+           "veritysetup",
+           [
+             "format",
+             fs_path,
+             fs_path,
+             "--data-block-size=#{block_size}",
+             "--hash-block-size=#{block_size}",
+             "--hash-offset=#{data_size}",
+             "--root-hash-file=#{root_hash_path}"
+           ],
+           stderr_to_stdout: true
+         ) do
       {_, 0} ->
         root_hash = root_hash_path |> File.read!() |> String.trim()
         Logger.info("dm-verity: root hash #{root_hash}")

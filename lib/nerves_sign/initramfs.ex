@@ -90,6 +90,10 @@ defmodule NervesSign.Initramfs do
     end
   end
 
+  # Public (undocumented) so it can be tested directly: this is hand-built
+  # binary whose only other exercise is a full kernel boot.
+  @doc false
+  @spec device_nodes_cpio() :: binary()
   # The kernel opens /dev/console for /init's stdio, and cryptinit opens
   # /dev/kmsg in log_init(), both before devtmpfs is mounted. Without the
   # device nodes in the archive every cryptinit message is silently lost
@@ -97,7 +101,7 @@ defmodule NervesSign.Initramfs do
   # the build doesn't have, so a tiny newc archive carrying just the nodes is
   # synthesized byte-for-byte and prepended as its own gzip member: the
   # kernel unpacks concatenated compressed archives.
-  defp device_nodes_cpio do
+  def device_nodes_cpio do
     entries = [
       {"dev", 0o040755, 0, 0},
       {"dev/console", 0o020600, 5, 1},
@@ -107,7 +111,9 @@ defmodule NervesSign.Initramfs do
     body =
       entries
       |> Enum.with_index(1)
-      |> Enum.map(fn {{name, mode, rmaj, rmin}, ino} -> newc_entry(name, mode, rmaj, rmin, ino) end)
+      |> Enum.map(fn {{name, mode, rmaj, rmin}, ino} ->
+        newc_entry(name, mode, rmaj, rmin, ino)
+      end)
 
     IO.iodata_to_binary(body ++ [newc_entry("TRAILER!!!", 0, 0, 0, 0)])
   end

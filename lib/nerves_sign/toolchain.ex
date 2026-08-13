@@ -22,40 +22,75 @@ defmodule NervesSign.Toolchain do
   """
   @spec resolve(atom()) :: %{cc: Path.t(), strip: Path.t()}
   def resolve(board) do
-    triple = NervesSign.Board.impl(board).toolchain_triple()
+    case override(board) || cached(board) do
+      nil -> fetch(board)
+      tools -> tools
+    end
+  end
+
+  @doc """
+  Whether the board's toolchain can be used without going to the network: an
+  explicit `:toolchain` bin override, or a copy already in the build cache.
+  """
+  @spec available?(atom()) :: boolean()
+  def available?(board) do
+    case override(board) || cached(board) do
+      nil -> false
+      %{cc: cc} -> File.exists?(cc)
+    end
+  end
+
+  defp override(board) do
+    triple = triple(board)
 
     case Application.get_env(:nerves_sign, :toolchain)[:bin] do
-      nil -> fetch(board, triple)
+      nil -> nil
       bin -> %{cc: Path.join(bin, "#{triple}-gcc"), strip: Path.join(bin, "#{triple}-strip")}
     end
   end
 
-  defp fetch(board, triple) do
-    %{version: version, hash: hash} = NervesSign.Board.impl(board).toolchain()
-    host = host_tag()
-    triple_us = String.replace(triple, "-", "_")
-    name = "nerves_toolchain_#{triple_us}-#{host}-#{version}-#{hash}"
-    cache = Path.join([build_root(), "nerves_sign", "toolchains"])
-    dest = Path.join(cache, name)
-    cc = find_cc(dest, triple)
-
-    if cc do
-      %{cc: cc, strip: String.replace_suffix(cc, "-gcc", "-strip")}
-    else
-      File.mkdir_p!(cache)
-      url = "#{@releases}/v#{version}/#{name}.tar.xz"
-      tarball = Path.join(cache, "#{name}.tar.xz")
-      Logger.info("nerves_sign: fetching musl toolchain #{name}")
-      download!(url, tarball)
-      File.mkdir_p!(dest)
-      {_, 0} = System.cmd("tar", ["-xf", tarball, "-C", dest, "--strip-components=1"])
-      File.rm(tarball)
-
-      cc =
-        find_cc(dest, triple) || Mix.raise("nerves_sign: gcc not found after extracting #{name}")
-
-      %{cc: cc, strip: String.replace_suffix(cc, "-gcc", "-strip")}
+  defp cached(board) do
+    case find_cc(cache_dir(board), triple(board)) do
+      nil -> nil
+      cc -> tools(cc)
     end
+  end
+
+  defp fetch(board) do
+    name = artifact_name(board)
+    %{version: version} = NervesSign.Board.impl(board).toolchain()
+    cache = Path.join([build_root(), "nerves_sign", "toolchains"])
+    dest = cache_dir(board)
+
+    File.mkdir_p!(cache)
+    url = "#{@releases}/v#{version}/#{name}.tar.xz"
+    tarball = Path.join(cache, "#{name}.tar.xz")
+    Logger.info("nerves_sign: fetching musl toolchain #{name}")
+    download!(url, tarball)
+    File.mkdir_p!(dest)
+    {_, 0} = System.cmd("tar", ["-xf", tarball, "-C", dest, "--strip-components=1"])
+    File.rm(tarball)
+
+    cc =
+      find_cc(dest, triple(board)) ||
+        Mix.raise("nerves_sign: gcc not found after extracting #{name}")
+
+    tools(cc)
+  end
+
+  defp tools(cc), do: %{cc: cc, strip: String.replace_suffix(cc, "-gcc", "-strip")}
+
+  defp triple(board), do: NervesSign.Board.impl(board).toolchain_triple()
+
+  defp cache_dir(board),
+    do: Path.join([build_root(), "nerves_sign", "toolchains", artifact_name(board)])
+
+  @doc "Name of the toolchain release artifact this host and board need."
+  @spec artifact_name(atom()) :: String.t()
+  def artifact_name(board) do
+    %{version: version, hash: hash} = NervesSign.Board.impl(board).toolchain()
+    triple_us = String.replace(triple(board), "-", "_")
+    "nerves_toolchain_#{triple_us}-#{host_tag()}-#{version}-#{hash}"
   end
 
   defp find_cc(dir, triple) do
@@ -75,7 +110,10 @@ defmodule NervesSign.Toolchain do
       else: Path.join(File.cwd!(), "_build")
   end
 
-  defp host_tag do
+  # Public (undocumented) for testing: this names the artifact we download,
+  # and a wrong tag surfaces only as a 404 on someone else's machine.
+  @doc false
+  def host_tag do
     arch = :erlang.system_info(:system_architecture) |> to_string()
 
     cpu =
