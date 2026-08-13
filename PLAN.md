@@ -218,8 +218,11 @@ partition layout, and the fwup configs naming them.
 the root hash rides the signed cmdline, the hash tree offset comes from the
 rootfs superblock — and cryptinit treats a missing file as "no encryption"
 (`config_parse_file` returns success on `ENOENT`). So it is project-owned with
-no fallback, and `mix nerves_sign.gen.<board> --no-encryption` simply does not
-generate it, giving a verity-only device.
+no fallback, and the gen task does not generate it by default —
+a verity-only device, mirroring cryptinit's own model where verity is mandatory
+and encryption is opt-in. `--encryption` generates it, and is a deliberate step
+because it is not self-contained: the rootfs must also be encrypted offline in
+fwup.conf with a matching cipher, and the key must be burned into OTP.
 
 Note the distinction: the **initramfs** is always required, because cryptinit is
 the init that sets dm-verity up. Only its *config file* is encryption-specific.

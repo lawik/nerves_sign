@@ -15,7 +15,6 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
     config/rpi4/boot_fwup.conf
     config/rpi4/config.txt
     config/rpi4/cmdline.txt
-    config/rpi4/initramfs.conf
     priv/nerves_sign/post_process
   )
 
@@ -96,9 +95,12 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
 
     # The gen task and post-processing must agree on where these live; both go
     # through the board rather than repeating the path.
-    for name <- ~w(config.txt cmdline.txt boot_fwup.conf initramfs.conf) do
+    for name <- ~w(config.txt cmdline.txt boot_fwup.conf) do
       assert File.exists?(NervesSign.Paths.project_config(:rpi4, name))
     end
+
+    run(["--encryption"])
+    assert File.exists?(NervesSign.Paths.project_config(:rpi4, "initramfs.conf"))
   end
 
   test "the outer fwup.conf includes the common file at the path it generates" do
@@ -143,49 +145,39 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
     end
   end
 
-  describe "--no-encryption" do
-    test "does not generate initramfs.conf" do
-      run(["--no-encryption"])
+  describe "encryption" do
+    test "the default generates no initramfs.conf" do
+      run()
 
-      # Its absence is how a verity-only device is expressed: cryptinit reads
-      # nothing from it for dm-verity and treats it as optional.
+      # Absence is how a verity-only device is expressed: cryptinit reads
+      # nothing from it for dm-verity and treats it as optional. Mirrors
+      # cryptinit's model — verity mandatory, encryption opt-in.
       refute File.exists?("config/rpi4/initramfs.conf")
     end
 
-    test "still generates everything the signing ceremony needs" do
-      run(["--no-encryption"])
-
-      for path <- @generated -- ~w(config/rpi4/initramfs.conf) do
-        assert File.exists?(path), "#{path} was not generated"
-      end
-    end
-
-    test "says what was skipped and what that means" do
-      run(["--no-encryption"])
-      out = output()
-
-      assert out =~ "skipping config/rpi4/initramfs.conf"
-      assert out =~ "not encrypted at rest"
-      # The device is still verified — that is the part people will worry about.
-      assert out =~ "signed and verified"
-    end
-
-    test "the default generates it and warns that fwup must match" do
+    test "the default says what that means for the device" do
       run()
       out = output()
+
+      assert out =~ "no config/rpi4/initramfs.conf"
+      assert out =~ "not encrypted at rest"
+      # The part people will worry about: it is still verified.
+      assert out =~ "signed and verified"
+      assert out =~ "--encryption"
+    end
+
+    test "--encryption generates it" do
+      run(["--encryption"])
 
       assert File.exists?("config/rpi4/initramfs.conf")
-      # nerves_sign does not encrypt the rootfs; fwup.conf has to.
-      assert out =~ "not encrypt the rootfs for you"
-      assert out =~ "aes-xts-plain64"
     end
 
-    test "the generated config turns dm-crypt on with the OTP helper" do
-      run()
-      conf = File.read!("config/rpi4/initramfs.conf")
+    test "--encryption turns dm-crypt on with the OTP helper" do
+      run(["--encryption"])
 
       active =
-        conf
+        "config/rpi4/initramfs.conf"
+        |> File.read!()
         |> String.split("\n")
         |> Enum.reject(&(String.trim(&1) == "" or String.starts_with?(String.trim(&1), "#")))
 
@@ -193,8 +185,18 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
       assert "rootfs_cipher = aes-xts-plain64" in active
     end
 
+    test "--encryption names both things still left to the project" do
+      run(["--encryption"])
+      out = output()
+
+      # nerves_sign does neither of these, and without both the device fails
+      # to mount.
+      assert out =~ "encrypt the rootfs offline"
+      assert out =~ "burned into the customer OTP"
+    end
+
     test "every active setting is a key cryptinit actually reads" do
-      run()
+      run(["--encryption"])
 
       known = ~w(rootfs_key rootfs_cipher data_device data_key data_cipher device_timeout)
 
@@ -205,6 +207,22 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
         [key | _] = String.split(line, "=", parts: 2)
         assert String.trim(key) in known, "cryptinit ignores #{inspect(line)}"
       end
+    end
+
+    test "does not suggest passing an argument to the shipped unlock helper" do
+      run(["--encryption"])
+      conf = File.read!("config/rpi4/initramfs.conf")
+
+      # unlock.c is `int main(void)`: it ignores argv and always returns the
+      # same OTP-derived key, so `unlock data` would give both volumes one key.
+      refute conf =~ "unlock data"
+      assert conf =~ "takes no arguments"
+    end
+
+    test "everything the signing ceremony needs is generated either way" do
+      run(["--encryption"])
+
+      for path <- @generated, do: assert(File.exists?(path), "#{path} was not generated")
     end
   end
 

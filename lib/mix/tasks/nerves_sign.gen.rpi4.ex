@@ -5,13 +5,13 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
   own it (no fork of nerves_sign needed to adjust your system):
 
       mix nerves_sign.gen.rpi4
-      mix nerves_sign.gen.rpi4 --no-encryption
+      mix nerves_sign.gen.rpi4 --encryption
 
   Generates:
     - config/rpi4/boot_fwup.conf     inner boot.img layout
     - config/rpi4/config.txt         inner RPi config
     - config/rpi4/cmdline.txt        inner cmdline (verity_roothash= injected at build)
-    - config/rpi4/initramfs.conf     cryptinit config (encryption; see --no-encryption)
+    - config/rpi4/initramfs.conf     cryptinit config (only with --encryption)
     - priv/nerves_sign/post_process  post-processing hook
 
   Then wire it up in your target config (see the printed instructions).
@@ -23,9 +23,15 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
   offset comes from the rootfs superblock — and cryptinit treats a missing
   config as "no encryption".
 
-  So `--no-encryption` simply does not generate the file. You get a verity-only
-  device: the rootfs is still signed and still verified on every block, it is
-  just not encrypted at rest.
+  So the default generates no `initramfs.conf` at all: a verity-only device,
+  where the rootfs is signed and verified on every block but not encrypted at
+  rest. This mirrors cryptinit's own model, where verity is mandatory and
+  encryption is opt-in.
+
+  `--encryption` generates it. That is a deliberate step because it is not
+  self-contained: your `fwup.conf` must also encrypt the rootfs offline with a
+  matching cipher, and the device needs its key burned into OTP. Without both,
+  the device fails to mount — safely, but confusingly.
   """
   use Mix.Task
 
@@ -48,7 +54,7 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
   @impl Mix.Task
   def run(args) do
     {opts, _, _} = OptionParser.parse(args, strict: [encryption: :boolean])
-    encryption? = Keyword.get(opts, :encryption, true)
+    encryption? = Keyword.get(opts, :encryption, false)
 
     Application.ensure_loaded(:nerves_sign)
     priv = Path.join(:code.priv_dir(:nerves_sign), NervesSign.Boards.RPi4.priv_dir())
@@ -63,9 +69,10 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
 
     unless encryption? do
       Mix.shell().info("""
-        skipping config/rpi4/initramfs.conf (--no-encryption)
+        no config/rpi4/initramfs.conf
           dm-verity needs no config, so the rootfs is signed and verified
-          but not encrypted at rest. Generate the file later to turn dm-crypt on.
+          but not encrypted at rest. Re-run with --encryption to turn
+          dm-crypt on.
       """)
     end
 
@@ -100,9 +107,13 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
     if encryption? do
       Mix.shell().info("""
       NOTE: config/rpi4/initramfs.conf turns on dm-crypt, but nerves_sign does
-      not encrypt the rootfs for you. Your fwup.conf must encrypt it offline
-      with the same cipher string (aes-xts-plain64), or the device will fail to
-      mount. Run with --no-encryption for a verity-only device.
+      not encrypt the rootfs for you. Two things are still on you:
+
+        1. your fwup.conf must encrypt the rootfs offline with the same cipher
+           string (aes-xts-plain64)
+        2. the device needs its key burned into the customer OTP rows
+
+      Without both, cryptinit cannot decrypt and the device fails to mount.
       """)
     end
   end
