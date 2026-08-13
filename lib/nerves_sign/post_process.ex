@@ -75,15 +75,24 @@ defmodule NervesSign.PostProcess do
         app_dir: app_dir
       })
 
-    # 6. initramfs
+    # 6. initramfs. No config file means no encryption: cryptinit treats a
+    # missing /etc/initramfs.conf as "verity only", and dm-verity reads nothing
+    # from it. Absence is a choice here (gen --no-encryption), not a gap to
+    # paper over with our copy.
     conf =
-      Paths.project_or_board(
-        board,
-        sb[:initramfs_conf],
-        app_dir,
-        Paths.project_config(board, "initramfs.conf"),
-        "initramfs.conf"
-      )
+      case sb[:initramfs_conf] do
+        nil ->
+          path = Path.join(app_dir, Paths.project_config(board, "initramfs.conf"))
+          if File.exists?(path), do: path, else: nil
+
+        configured ->
+          Paths.resolve(configured, app_dir)
+      end
+
+    Logger.info(
+      "nerves_sign: " <>
+        if(conf, do: "cryptinit config #{conf}", else: "no cryptinit config; verity only")
+    )
 
     cpio =
       Initramfs.assemble(%{board: board, toolchain: toolchain, init: init, initramfs_conf: conf})
@@ -93,7 +102,6 @@ defmodule NervesSign.PostProcess do
       BootImage.build(system_path, boot_fwup, %{
         config_txt: config_txt,
         cmdline_txt: inner_cmdline,
-        rootfs_pubkey: sb[:rootfs_public_key_path],
         initramfs_path: cpio
       })
 

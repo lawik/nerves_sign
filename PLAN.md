@@ -214,6 +214,22 @@ VideoCore customer-OTP read), and the `rpi_secure_boot` config block. What is
 genuinely per-board: device trees and firmware blobs, the toolchain pin, the
 partition layout, and the fwup configs naming them.
 
+`initramfs.conf` is **only about encryption**. dm-verity reads nothing from it —
+the root hash rides the signed cmdline, the hash tree offset comes from the
+rootfs superblock — and cryptinit treats a missing file as "no encryption"
+(`config_parse_file` returns success on `ENOENT`). So it is project-owned with
+no fallback, and `mix nerves_sign.gen.<board> --no-encryption` simply does not
+generate it, giving a verity-only device.
+
+Note the distinction: the **initramfs** is always required, because cryptinit is
+the init that sets dm-verity up. Only its *config file* is encryption-specific.
+
+The cipher lives in that file next to `rootfs_key`, not in Elixir config. It has
+to match the offline encryption in fwup.conf and the kernel's enabled crypto, so
+one visible place beats a knob in a second file. (The old
+`config :nerves_sign, rootfs_cipher:` never worked — `initramfs.conf` is copied
+verbatim — and `Board.cipher/2` had no caller. Both removed.)
+
 `boot_fwup.conf` has **no library fallback**. It decides what goes inside the
 signed image — device trees, overlays, the GPU firmware — so a missing one is an
 error pointing at the gen task, not a silent substitution of ours. ex_verity is

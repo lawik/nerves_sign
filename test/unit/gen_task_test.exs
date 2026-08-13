@@ -36,7 +36,7 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
     {:ok, dir: dir}
   end
 
-  defp run, do: @task.run([])
+  defp run(args \\ []), do: @task.run(args)
 
   # Mix.Shell.Process posts each line to the test process mailbox.
   defp output(acc \\ []) do
@@ -55,6 +55,17 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
       assert File.exists?(path), "#{path} was not generated"
       assert out =~ "created #{path}"
     end
+  end
+
+  test "no longer advertises the cipher config option, which never worked" do
+    run()
+    out = output()
+
+    # PostProcess copies initramfs.conf verbatim, so an Elixir-side cipher
+    # setting did nothing. The cipher lives next to rootfs_key instead.
+    # The Elixir-config form, not the initramfs.conf key of the same name.
+    refute out =~ "rootfs_cipher:"
+    refute out =~ "aes-cbc-plain"
   end
 
   test "the generated config is the config the pipeline validates against" do
@@ -129,6 +140,71 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
 
     for symbol <- NervesSign.Boards.RPi4.required_kernel_config() do
       assert out =~ symbol
+    end
+  end
+
+  describe "--no-encryption" do
+    test "does not generate initramfs.conf" do
+      run(["--no-encryption"])
+
+      # Its absence is how a verity-only device is expressed: cryptinit reads
+      # nothing from it for dm-verity and treats it as optional.
+      refute File.exists?("config/rpi4/initramfs.conf")
+    end
+
+    test "still generates everything the signing ceremony needs" do
+      run(["--no-encryption"])
+
+      for path <- @generated -- ~w(config/rpi4/initramfs.conf) do
+        assert File.exists?(path), "#{path} was not generated"
+      end
+    end
+
+    test "says what was skipped and what that means" do
+      run(["--no-encryption"])
+      out = output()
+
+      assert out =~ "skipping config/rpi4/initramfs.conf"
+      assert out =~ "not encrypted at rest"
+      # The device is still verified — that is the part people will worry about.
+      assert out =~ "signed and verified"
+    end
+
+    test "the default generates it and warns that fwup must match" do
+      run()
+      out = output()
+
+      assert File.exists?("config/rpi4/initramfs.conf")
+      # nerves_sign does not encrypt the rootfs; fwup.conf has to.
+      assert out =~ "not encrypt the rootfs for you"
+      assert out =~ "aes-xts-plain64"
+    end
+
+    test "the generated config turns dm-crypt on with the OTP helper" do
+      run()
+      conf = File.read!("config/rpi4/initramfs.conf")
+
+      active =
+        conf
+        |> String.split("\n")
+        |> Enum.reject(&(String.trim(&1) == "" or String.starts_with?(String.trim(&1), "#")))
+
+      assert "rootfs_key = cmd:/usr/sbin/unlock" in active
+      assert "rootfs_cipher = aes-xts-plain64" in active
+    end
+
+    test "every active setting is a key cryptinit actually reads" do
+      run()
+
+      known = ~w(rootfs_key rootfs_cipher data_device data_key data_cipher device_timeout)
+
+      for line <- File.read!("config/rpi4/initramfs.conf") |> String.split("\n"),
+          line = String.trim(line),
+          line != "",
+          not String.starts_with?(line, "#") do
+        [key | _] = String.split(line, "=", parts: 2)
+        assert String.trim(key) in known, "cryptinit ignores #{inspect(line)}"
+      end
     end
   end
 

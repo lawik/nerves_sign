@@ -17,13 +17,12 @@ defmodule NervesSign.Boards.RPi.BootImage do
 
   @doc """
   Build `boot.img` from the system images plus the prepared initramfs and
-  inner txts. `opts` carries resolved paths (board fwup conf, config_txt,
-  cmdline_txt, initramfs_path, rootfs_pubkey). Returns `{:ok, boot_img_path}`.
+  inner txts. `opts` carries resolved paths (config_txt, cmdline_txt,
+  initramfs_path). Returns `{:ok, boot_img_path}`.
   """
   def build(system_path, fwup_conf, %{
         config_txt: config_txt,
         cmdline_txt: cmdline_txt,
-        rootfs_pubkey: rootfs_pubkey,
         initramfs_path: initramfs_path
       }) do
     images_dir = Path.join(system_path, "images")
@@ -34,7 +33,6 @@ defmodule NervesSign.Boards.RPi.BootImage do
       "SOURCE" => images_dir,
       "CONFIG_TXT" => config_txt,
       "CMDLINE_TXT" => cmdline_txt,
-      "ROOTFS_PUB_KEY" => Path.expand(rootfs_pubkey || ""),
       "ROOTFS" => Path.expand(initramfs_path)
     }
 

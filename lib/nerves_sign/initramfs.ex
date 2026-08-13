@@ -16,13 +16,15 @@ defmodule NervesSign.Initramfs do
     * `:board` - board atom
     * `:toolchain` - `%{cc, strip}` from `NervesSign.Toolchain`
     * `:init` - path to the built cryptinit init
-    * `:initramfs_conf` - path to the initramfs.conf to embed
+    * `:initramfs_conf` - path to the initramfs.conf to embed, or `nil` for a
+      verity-only device (cryptinit reads nothing from it for dm-verity and
+      treats the file as optional)
   """
   @spec assemble(%{
           board: atom(),
           toolchain: %{cc: Path.t(), strip: Path.t()},
           init: Path.t(),
-          initramfs_conf: Path.t()
+          initramfs_conf: Path.t() | nil
         }) :: Path.t()
   def assemble(%{board: board, toolchain: tc, init: init, initramfs_conf: conf}) do
     unlock = build_helper(board, tc)
@@ -32,7 +34,7 @@ defmodule NervesSign.Initramfs do
 
     install(init, Path.join(root, "init"))
     install(unlock, Path.join(root, "usr/sbin/unlock"))
-    File.cp!(conf, Path.join(root, "etc/initramfs.conf"))
+    if conf, do: File.cp!(conf, Path.join(root, "etc/initramfs.conf"))
 
     out = Path.join(Path.dirname(root), "initramfs.cpio.gz")
     pack(root, out)

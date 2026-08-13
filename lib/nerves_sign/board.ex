@@ -26,9 +26,6 @@ defmodule NervesSign.Board do
   """
   @callback toolchain() :: %{version: String.t(), hash: String.t()}
 
-  @doc "Default dm-crypt cipher, e.g. \"aes-xts-plain64\"."
-  @callback default_cipher() :: String.t()
-
   @doc "Kernel CONFIG symbols that must be =y for this board to boot."
   @callback required_kernel_config() :: [String.t()]
 
@@ -102,19 +99,5 @@ defmodule NervesSign.Board do
           do: override,
           else: Path.join(File.cwd!(), override)
     end
-  end
-
-  @doc """
-  The dm-crypt cipher for `which` in `[:rootfs, :data]`.
-
-  Library default is the board default (`aes-xts-plain64`). Projects with
-  existing devices override per volume, e.g.
-  `config :nerves_sign, rootfs_cipher: "aes-cbc-plain"`. The same string must
-  match the offline encryption in your fwup.conf and the kernel's enabled
-  crypto.
-  """
-  @spec cipher(atom(), :rootfs | :data) :: String.t()
-  def cipher(board, which) when which in [:rootfs, :data] do
-    Application.get_env(:nerves_sign, :"#{which}_cipher") || impl(board).default_cipher()
   end
 end

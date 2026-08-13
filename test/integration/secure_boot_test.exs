@@ -124,7 +124,9 @@ defmodule NervesSign.Integration.SecureBootTest do
     listing = cpio_list(c, main)
     assert listing =~ ~r/\sinit$/m
     assert listing =~ ~r/usr\/sbin\/unlock$/m
-    assert listing =~ ~r/etc\/initramfs.conf$/m
+    # This fixture generates no initramfs.conf, which is how a verity-only
+    # device is expressed: cryptinit treats the file as optional.
+    refute listing =~ ~r/etc\/initramfs.conf$/m
 
     # /init is what the kernel execs, so it has to be executable.
     assert listing =~ ~r/^-rwxr-xr-x.*\sinit$/m

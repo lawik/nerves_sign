@@ -28,25 +28,6 @@ defmodule NervesSign.BoardTest do
     end
   end
 
-  describe "cipher/2" do
-    test "defaults to the board cipher for both volumes" do
-      assert Board.cipher(:rpi4, :rootfs) == "aes-xts-plain64"
-      assert Board.cipher(:rpi4, :data) == "aes-xts-plain64"
-    end
-
-    test "a project override wins per volume" do
-      Application.put_env(:nerves_sign, :rootfs_cipher, "aes-cbc-plain")
-
-      assert Board.cipher(:rpi4, :rootfs) == "aes-cbc-plain"
-      # Overriding one volume must not silently change the other.
-      assert Board.cipher(:rpi4, :data) == "aes-xts-plain64"
-    end
-
-    test "rejects a volume that is neither rootfs nor data" do
-      assert_raise FunctionClauseError, fn -> Board.cipher(:rpi4, :app) end
-    end
-  end
-
   describe "key_helper_source/1" do
     test "defaults to the helper shipped in priv, and it exists" do
       src = Board.key_helper_source(:rpi4)
@@ -102,9 +83,11 @@ defmodule NervesSign.BoardTest do
       end
     end
 
-    test "the default cipher matches the crypto it requires in the kernel" do
-      assert RPi4.default_cipher() == "aes-xts-plain64"
+    test "declares the crypto the shipped initramfs.conf cipher needs" do
+      # The gen task writes rootfs_cipher = aes-xts-plain64, which is dead
+      # without CRYPTO_XTS built into the kernel.
       assert "CONFIG_CRYPTO_XTS" in RPi4.required_kernel_config()
+      assert "CONFIG_DM_CRYPT" in RPi4.required_kernel_config()
     end
 
     test "config_dir is where the gen task writes and post-processing reads" do

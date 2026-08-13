@@ -16,10 +16,6 @@ defmodule NervesSign.Boards.RPi4 do
   def toolchain, do: %{version: "14.2.0", hash: "4D401D0"}
 
   @impl true
-  # cryptinit's default. Requires CRYPTO_XTS=y in the kernel.
-  def default_cipher, do: "aes-xts-plain64"
-
-  @impl true
   def required_kernel_config do
     ~w(
       CONFIG_BLK_DEV_INITRD
