@@ -167,6 +167,35 @@ What we drop: the entire `priv/initramfs` buildroot tree, the home-grown
 `verity_init`/`rpi_otp_key`/`nerves_key` packages, the shell `init_sh`, the
 enlarged boot partition, and the loose-file boot layout.
 
+## Preflight: where the board seam is
+
+Validation before signing splits in two, and the split is the thing to keep
+straight when a second board arrives:
+
+- **The cryptinit contract** (`NervesSign.Preflight.check_cmdline!/1`) — what
+  the kernel cmdline must carry for the init we package to work: `root=`
+  naming the *backing* device (cryptinit creates the dm nodes itself), `ro`,
+  and the injected `verity_roothash=`. These come from cryptinit's `main.c`,
+  so they hold for every board that boots it. Shared, always runs first.
+- **The boot firmware contract** (`c:NervesSign.Board.preflight!/1`) — how a
+  ROM or firmware finds the kernel, initramfs and cmdline. Nothing here
+  generalizes: RPi parses `config.txt` out of the FAT boot image
+  (`NervesSign.Boards.RPi4.Preflight`), while an i.MX HAB/TrustZone chain
+  validates a signed container and has no `config.txt` at all. Required
+  callback, not optional — for a secure boot tool, "this board has nothing to
+  validate" should be a sentence someone wrote on purpose.
+
+`preflight!/1` takes the resolved build context as a **map** so boards read the
+keys they need and new keys can be added without breaking existing boards.
+`NervesSign.Fwup.fat_files/1` sits between the two: fwup-generic rather than
+RPi-specific, useful to any board whose boot image is a FAT built by fwup, and
+irrelevant to one whose image is a raw signed blob.
+
+Still RPi4-shaped and *not* yet behind the seam, for whenever a second board
+lands: the `rpi4_secure_boot` config key, the `config/rpi4/*` default paths in
+`NervesSign.PostProcess`, and `NervesSign.BootImage` (the RPi bootloader
+signature format and the outer-txt copy).
+
 ## Milestones
 
 1. **Skeleton + lift** (done): mix project, modules with lifted

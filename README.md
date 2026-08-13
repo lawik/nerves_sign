@@ -41,3 +41,31 @@ then wire the printed `config :nerves_sign, board: :rpi4` and
 `config/rpi4/*` files are yours to edit.
 
 See `PLAN.md` for architecture, build flow, and milestones.
+
+## Tests
+
+```
+mix test                      # unit tier, plus integration when it can
+mix test --include integration # force the integration tier
+mix test --exclude integration # unit tier only
+```
+
+Two tiers. The **unit** tier is pure and always runs: cmdline rendering, the
+preflight checks, board/toolchain/path resolution, and the hand-written newc
+CPIO carrying `/dev/console` and `/dev/kmsg`.
+
+The **integration** tier runs the real pipeline against a fixture system and
+uses [bodge_rpiboottest](https://github.com/lawik/bodge_rpiboottest) — a test
+double for the RPi4 EEPROM bootloader — as the oracle for signing, tamper
+refusal, wrong-key refusal and the tryboot A/B cycle. It needs `veritysetup`,
+`mksquashfs`, `fwup`, `mtools`, `cpio`, `make`, and the musl cross-toolchain
+(fetched on first use, or point `NERVES_SIGN_TEST_TOOLCHAIN_BIN` at a cached
+`bin/`). It opts itself in once the toolchain is cached; `--include
+integration` forces it.
+
+A third tier in `test/integration/qemu_boot_test.exs` boots the signed image on
+QEMU `raspi4b` for real. It needs a built Nerves system with the dm bits `=y`:
+
+```
+NERVES_SIGN_TEST_SYSTEM=/path/to/system mix test --include integration
+```

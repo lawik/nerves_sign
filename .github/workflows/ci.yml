@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The full suite, including the integration tier. bodge_rpiboottest is a
+  # sibling path dep, so both repos are checked out side by side and mix runs
+  # from inside nerves_sign.
+  test:
+    runs-on: ubuntu-24.04
+
+    env:
+      MIX_ENV: test
+
+    defaults:
+      run:
+        working-directory: nerves_sign
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: nerves_sign
+
+      # If this repo is private, add `token: ${{ secrets.BODGE_TOKEN }}` (a PAT
+      # with read access) — the default GITHUB_TOKEN cannot read another repo.
+      - uses: actions/checkout@v4
+        with:
+          repository: lawik/bodge_rpiboottest
+          path: bodge_rpiboottest
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      # The pipeline shells out to all of these. Without them the integration
+      # tier skips itself and the run goes green for the wrong reason, so this
+      # step failing is preferable to it being optional.
+      #   cryptsetup-bin  veritysetup
+      #   squashfs-tools  mksquashfs
+      #   mtools          mcopy/mdir, for reading back into boot.img
+      - name: Install host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cryptsetup-bin squashfs-tools mtools cpio xxd
+          FWUP_VERSION=1.13.0
+          curl -fsSL -o /tmp/fwup.deb \
+            "https://github.com/fwup-home/fwup/releases/download/v${FWUP_VERSION}/fwup_${FWUP_VERSION}_amd64.deb"
+          sudo dpkg -i /tmp/fwup.deb
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            nerves_sign/deps
+            nerves_sign/_build
+          key: ${{ runner.os }}-mix-${{ hashFiles('nerves_sign/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      # ~100 MB, pinned per board by NervesSign.Boards.RPi4.toolchain/0, so the
+      # key only changes when that pin changes.
+      - uses: actions/cache@v4
+        with:
+          path: nerves_sign/_build/test/nerves_sign/toolchains
+          key: ${{ runner.os }}-musl-${{ hashFiles('nerves_sign/lib/nerves_sign/boards/*.ex') }}
+
+      - run: mix deps.get
+
+      - run: mix format --check-formatted
+
+      - run: mix compile --warnings-as-errors
+
+      # Explicit: test_helper only opts the integration tier in when the
+      # toolchain is already cached, and a cold cache must not silently reduce
+      # this to a unit-test run.
+      - run: mix test --include integration
+
+  # A library consumer clones this repo alone and never sees the sibling, so
+  # the non-test build has to stand on its own.
+  consumer:
+    runs-on: ubuntu-24.04
+
+    env:
+      MIX_ENV: dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - run: mix deps.get
+
+      - run: mix compile --warnings-as-errors
+
+      - run: mix docs
