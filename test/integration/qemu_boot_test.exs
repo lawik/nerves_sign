@@ -250,7 +250,7 @@ defmodule NervesSign.Integration.QemuBootTest do
       bin -> Application.put_env(:nerves_sign, :toolchain, bin: bin)
     end
 
-    Application.put_env(:nerves_sign, :rpi4_secure_boot,
+    Application.put_env(:nerves_sign, :rpi_secure_boot,
       private_key_path: key,
       cmdline_txt_path: Path.join(app, "config/rpi4/cmdline.txt"),
       config_txt_path: Path.join(app, "config/rpi4/config.txt")

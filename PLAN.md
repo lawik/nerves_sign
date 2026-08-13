@@ -191,10 +191,17 @@ keys they need and new keys can be added without breaking existing boards.
 RPi-specific, useful to any board whose boot image is a FAT built by fwup, and
 irrelevant to one whose image is a raw signed blob.
 
-Still RPi4-shaped and *not* yet behind the seam, for whenever a second board
-lands: the `rpi4_secure_boot` config key, the `config/rpi4/*` default paths in
-`NervesSign.PostProcess`, and `NervesSign.BootImage` (the RPi bootloader
-signature format and the outer-txt copy).
+What is shared across the **Pi family** rather than owned by one board:
+`NervesSign.Boards.RPi.Preflight` (the config.txt contract),
+`NervesSign.Boards.RPi.BootImage` (boot.img assembly and the
+`rpi-eeprom-digest` signature format), `priv/boards/rpi/helpers/unlock.c` (the
+VideoCore customer-OTP read), and the `rpi_secure_boot` config block. What is
+genuinely per-board: device trees and firmware blobs, the toolchain pin, the
+partition layout, and the fwup configs naming them.
+
+Still RPi-shaped and *not* yet behind the seam, for whenever a non-Pi board
+lands: the `config/rpi4/*` default paths in `NervesSign.PostProcess`, which
+should come from the board rather than a literal.
 
 ## Milestones
 

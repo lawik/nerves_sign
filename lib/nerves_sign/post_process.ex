@@ -31,7 +31,7 @@ defmodule NervesSign.PostProcess do
   def run(rootfs_path) do
     board = NervesSign.board()
     cfg = Application.get_all_env(:nerves_sign)
-    sb = Map.new(cfg[:rpi4_secure_boot] || [])
+    sb = NervesSign.Boards.RPi.secure_boot_config()
     app_dir = System.get_env("NERVES_APP", File.cwd!())
     system_path = cfg[:system_path] || System.fetch_env!("NERVES_SYSTEM")
 

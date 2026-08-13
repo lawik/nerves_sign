@@ -57,7 +57,7 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
           # rootfs_cipher: "aes-cbc-plain",
           # Override the OTP/key helper source if you need your own:
           # key_helper_source: "priv/secure_boot/unlock.c",
-          rpi4_secure_boot: [
+          rpi_secure_boot: [
             private_key_path: System.fetch_env!("NERVES_SIGN_BOOT_PRIVATE_KEY_PATH"),
             config_txt_path: "config/rpi4/config.txt",
             cmdline_txt_path: "config/rpi4/cmdline.txt"
