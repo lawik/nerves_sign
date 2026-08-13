@@ -15,6 +15,24 @@ It's built static against the musl Nerves toolchain, installed at
 `/usr/sbin/unlock`, and wired with `rootfs_key = cmd:/usr/sbin/unlock` in
 `initramfs.conf`.
 
+## Layout
+
+- `unlock.c` — reads the key, prints hex. What cryptinit execs.
+- `otp.c` / `otp.h` — customer OTP rows: read, write, generate.
+- `mailbox.c` / `mailbox.h` — the VideoCore property interface, isolated so
+  everything above it can be tested on a build host.
+- `tests/` — host tests with an in-memory mailbox. `make test`.
+
+Style follows nerves_cryptinit: static musl, syscalls rather than subprocesses,
+small. There is no shell in the initramfs to shell out to.
+
+## Burning a key
+
+`otp_write()` refuses unless the rows are blank, and reads back to confirm.
+These bits are one-time programmable — a bit burned to 1 never returns to 0 —
+so a second write ORs into the existing key and permanently destroys the
+device's ability to decrypt its own rootfs. `unlock` itself only ever reads.
+
 ## Using your own helper
 
 Point nerves_sign at an alternate source instead of the default:

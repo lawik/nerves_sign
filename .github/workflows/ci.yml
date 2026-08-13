@@ -46,7 +46,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cryptsetup-bin squashfs-tools mtools cpio xxd
+            cryptsetup-bin squashfs-tools mtools cpio xxd build-essential
           FWUP_VERSION=1.13.0
           curl -fsSL -o /tmp/fwup.deb \
             "https://github.com/fwup-home/fwup/releases/download/v${FWUP_VERSION}/fwup_${FWUP_VERSION}_amd64.deb"

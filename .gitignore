@@ -11,3 +11,4 @@ nerves_sign-*.tar
 # built helper binaries
 priv/boards/*/helpers/unlock
 priv/boards/*/helpers/*.o
+priv/boards/*/helpers/tests/*_test
