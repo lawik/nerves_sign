@@ -109,6 +109,103 @@ defmodule NervesSign.Boards.RPi.PreflightTest do
     assert log =~ "unprovisioned"
   end
 
+  describe "dtoverlay" do
+    # Under stock Nerves the boot partition carries all of rpi-firmware's
+    # overlays/, so dtoverlay=anything works. In a signed image only what the
+    # fwup config names exists, and a missing one is silent at runtime.
+    defp with_overlays(body, lines), do: body <> Enum.join(lines, "\n") <> "\n"
+
+    test "accepts the overlays the shipped config.txt asks for", c do
+      # The generated project must be self-consistent: every dtoverlay in the
+      # shipped config.txt has to be in the shipped boot_fwup.conf.
+      shipped = Path.join([:code.priv_dir(:nerves_sign), "boards/rpi4", "config.txt"])
+      path = Path.join(c.dir, "config.txt")
+      File.cp!(shipped, path)
+
+      assert capture_log(fn ->
+               assert RPi4.preflight!(%{config_txt: path, boot_fwup_conf: c.fwup}) == :ok
+             end) == ""
+    end
+
+    test "rejects an overlay that is not in the signed image", c do
+      # w1-gpio-pullup is sitting commented out in entryfy's config.txt, and
+      # ex_verity's boot_fwup.conf carried it. Ours does not.
+      body = with_overlays(@good_config, ["dtoverlay=w1-gpio-pullup,gpiopin=4"])
+
+      err = assert_raise Mix.Error, ~r/not packed into boot\.img/, fn -> check(c, body) end
+      assert err.message =~ "overlays/w1-gpio-pullup.dtbo"
+    end
+
+    test "the message explains why it cannot be fixed after the fact", c do
+      body = with_overlays(@good_config, ["dtoverlay=pwm"])
+
+      err = assert_raise Mix.Error, fn -> check(c, body) end
+
+      assert err.message =~ "invalidating boot.sig"
+      assert err.message =~ "not apply"
+      # And shows the fwup lines to add.
+      assert err.message =~ "file-resource pwm.dtbo"
+      assert err.message =~ "fat_write"
+    end
+
+    test "lists every missing overlay at once, deduplicated", c do
+      body = with_overlays(@good_config, ["dtoverlay=pwm", "dtoverlay=tc358743", "dtoverlay=pwm"])
+
+      err = assert_raise Mix.Error, fn -> check(c, body) end
+
+      # The list itself, not the worked example further down that repeats one.
+      [listed, _explanation] = String.split(err.message, "Under secure boot", parts: 2)
+
+      assert listed =~ "overlays/pwm.dtbo"
+      assert listed =~ "overlays/tc358743.dtbo"
+      assert length(Regex.scan(~r|overlays/pwm\.dtbo|, listed)) == 1
+    end
+
+    test "accepts the parameterised form, which entryfy uses for cm4 host mode", c do
+      body = with_overlays(@good_config, ["dtoverlay=dwc2,dr_mode=host"])
+
+      assert capture_log(fn -> assert check(c, body) == :ok end) == ""
+    end
+
+    test "a bare dtoverlay= only terminates the previous overlay's parameters", c do
+      body = with_overlays(@good_config, ["dtoverlay=dwc2", "dtoverlay="])
+
+      assert capture_log(fn -> assert check(c, body) == :ok end) == ""
+    end
+
+    test "accepts a name written with its .dtbo suffix", c do
+      body = with_overlays(@good_config, ["dtoverlay=dwc2.dtbo"])
+
+      assert capture_log(fn -> assert check(c, body) == :ok end) == ""
+    end
+
+    test "a commented-out overlay needs nothing packed", c do
+      # entryfy carries these commented out; uncommenting one is exactly the
+      # change this check exists to catch.
+      body =
+        with_overlays(@good_config, ["#dtoverlay=w1-gpio-pullup,gpiopin=4", "# dtoverlay=pwm"])
+
+      assert capture_log(fn -> assert check(c, body) == :ok end) == ""
+    end
+
+    test "dtparam never needs an overlay file", c do
+      # dtparam applies to the base device tree, not an overlay.
+      body =
+        with_overlays(@good_config, ["dtparam=i2c_arm=on", "dtparam=spi=on", "dtparam=audio=on"])
+
+      assert capture_log(fn -> assert check(c, body) == :ok end) == ""
+    end
+
+    test "an overlay under a board filter is still required", c do
+      # Conditional filters are not interpreted, so [cm4] reads as always. For
+      # this check that is the safe direction: an unused 2 KB overlay in the
+      # image costs nothing, a missing one costs a driver.
+      body = with_overlays(@good_config, ["[cm4]", "dtoverlay=tc358743"])
+
+      assert_raise Mix.Error, ~r/tc358743/, fn -> check(c, body) end
+    end
+  end
+
   test "validates against the project's own fwup config, not a hardcoded list", c do
     # A project that renamed resources in its own boot_fwup.conf must validate
     # against its layout, or the check would force everyone onto ours.

@@ -51,6 +51,7 @@ defmodule NervesSign.Boards.RPi.Preflight do
     )
 
     check_boot_ramdisk(directives, config_txt)
+    check_overlays!(directives, packed, config_txt, fwup_conf)
     :ok
   end
 
@@ -59,12 +60,13 @@ defmodule NervesSign.Boards.RPi.Preflight do
   `%{kernel: name, initramfs: name, cmdline: name, boot_ramdisk: "1"}`. Absent
   keys are absent from the map.
   """
-  @spec parse(String.t()) :: %{atom() => String.t()}
+  @spec parse(String.t()) :: %{atom() => String.t() | [String.t()]}
   def parse(body) do
     body
     |> String.split("\n")
     |> Enum.map(&(&1 |> String.split("#", parts: 2) |> hd() |> String.trim()))
-    |> Enum.reduce(%{}, &collect_directive/2)
+    |> Enum.reduce(%{dtoverlays: []}, &collect_directive/2)
+    |> Map.update!(:dtoverlays, &Enum.reverse/1)
   end
 
   defp collect_directive(line, acc) do
@@ -76,15 +78,67 @@ defmodule NervesSign.Boards.RPi.Preflight do
           [] -> acc
         end
 
+      # `dtoverlay=name`, `dtoverlay=name,param=value`, or a bare `dtoverlay=`
+      # which only terminates the previous overlay's parameter list.
+      "dtoverlay=" <> rest ->
+        case rest |> String.split(",", parts: 2) |> hd() |> String.trim() do
+          "" -> acc
+          name -> Map.update!(acc, :dtoverlays, &[name | &1])
+        end
+
       _ ->
         case String.split(line, "=", parts: 2) do
           [k, v] when k in ~w(kernel cmdline boot_ramdisk) ->
             Map.put(acc, String.to_existing_atom(k), String.trim(v))
 
+          # dtparam= applies to the base device tree and needs no overlay file.
           _ ->
             acc
         end
     end
+  end
+
+  # Under stock Nerves the boot partition carries the whole overlays/ directory
+  # from rpi-firmware, so `dtoverlay=anything` just works. Inside a signed
+  # boot.img only what the fwup config enumerates exists, and a missing overlay
+  # is silent: the firmware warns on the UART and boots anyway, leaving a device
+  # with no driver for the peripheral. You cannot drop the file on afterwards
+  # either — that invalidates boot.sig.
+  defp check_overlays!(directives, packed, config_txt, fwup_conf) do
+    missing =
+      directives
+      |> Map.get(:dtoverlays, [])
+      |> Enum.map(&overlay_file/1)
+      |> Enum.reject(&MapSet.member?(packed, &1))
+      |> Enum.uniq()
+
+    if missing != [] do
+      example = hd(missing)
+
+      Mix.raise("""
+      nerves_sign: #{config_txt} requests overlays that are not packed into boot.img
+      by #{fwup_conf}:
+
+        #{Enum.join(missing, "\n  ")}
+
+      Under secure boot the signed image carries only the overlays the fwup config
+      names, and you cannot add one to the boot partition afterwards without
+      invalidating boot.sig. The firmware would boot anyway and simply not apply
+      them, leaving the driver missing at runtime with no error anywhere.
+
+      Add each to #{Path.basename(fwup_conf)}, e.g.
+
+          file-resource #{Path.basename(example)} { host-path = "${SOURCE}/rpi-firmware/#{example}" }
+
+      and a matching fat_write into "#{example}".
+      """)
+    end
+  end
+
+  defp overlay_file(name) do
+    if String.ends_with?(name, ".dtbo"),
+      do: "overlays/#{name}",
+      else: "overlays/#{name}.dtbo"
   end
 
   defp check_initramfs!(directives, packed, config_txt, fwup_conf) do
