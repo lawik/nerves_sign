@@ -17,26 +17,29 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4 do
   """
   use Mix.Task
 
-  @board_dir "boards/rpi4"
+  @board :rpi4
 
-  @files [
-    {"fwup.conf", "config/rpi4/fwup.conf"},
-    {"fwup_include/fwup-common.conf", "config/rpi4/fwup_include/fwup-common.conf"},
-    {"boot_fwup.conf", "config/rpi4/boot_fwup.conf"},
-    {"config.txt", "config/rpi4/config.txt"},
-    {"cmdline.txt", "config/rpi4/cmdline.txt"},
-    {"initramfs.conf", "config/rpi4/initramfs.conf"}
-  ]
+  # Copied from the board's priv dir into the project, keeping the same
+  # relative layout. The destination directory comes from the board so this and
+  # the post-processing that reads them back cannot drift apart.
+  @files ~w(
+    fwup.conf
+    fwup_include/fwup-common.conf
+    boot_fwup.conf
+    config.txt
+    cmdline.txt
+    initramfs.conf
+  )
 
   @impl Mix.Task
   def run(_args) do
     Application.ensure_loaded(:nerves_sign)
-    priv = Path.join(:code.priv_dir(:nerves_sign), @board_dir)
+    priv = Path.join(:code.priv_dir(:nerves_sign), NervesSign.Boards.RPi4.priv_dir())
 
     Mix.shell().info("Generating RPi4/CM4 secure boot files...\n")
 
-    for {src, dest} <- @files do
-      copy(Path.join(priv, src), dest)
+    for name <- @files do
+      copy(Path.join(priv, name), NervesSign.Paths.project_config(@board, name))
     end
 
     # Post-processing bridge script

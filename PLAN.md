@@ -199,9 +199,9 @@ VideoCore customer-OTP read), and the `rpi_secure_boot` config block. What is
 genuinely per-board: device trees and firmware blobs, the toolchain pin, the
 partition layout, and the fwup configs naming them.
 
-Still RPi-shaped and *not* yet behind the seam, for whenever a non-Pi board
-lands: the `config/rpi4/*` default paths in `NervesSign.PostProcess`, which
-should come from the board rather than a literal.
+Where the project's own files live comes from `c:NervesSign.Board.config_dir/0`
+via `NervesSign.Paths.project_config/2`, so the gen task and post-processing
+cannot drift apart and the pipeline never spells out `config/rpi4/`.
 
 ## Milestones
 

@@ -23,6 +23,16 @@ defmodule NervesSign.Paths do
   def resolve(path, base),
     do: if(Path.type(path) == :absolute, do: path, else: Path.join(base, path))
 
+  @doc """
+  Project-relative path to a generated, project-owned file for `board`, e.g.
+  `"config/rpi4/cmdline.txt"`. The board names the directory; the pipeline
+  never spells it out.
+  """
+  @spec project_config(atom(), Path.t()) :: Path.t()
+  def project_config(board, name) do
+    Path.join(["config", Board.impl(board).config_dir(), name])
+  end
+
   @doc "Absolute path to `name` in the board's `priv/boards/<board>/` dir."
   @spec board_file(atom(), Path.t()) :: Path.t()
   def board_file(board, name) do

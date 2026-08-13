@@ -107,6 +107,12 @@ defmodule NervesSign.BoardTest do
       assert "CONFIG_CRYPTO_XTS" in RPi4.required_kernel_config()
     end
 
+    test "config_dir is where the gen task writes and post-processing reads" do
+      # Declared, not derived from priv_dir: these paths exist on developers'
+      # disks, so an internal rename must not move them.
+      assert NervesSign.Boards.RPi4.config_dir() == "rpi4"
+    end
+
     test "priv_dir points at a directory that ships" do
       assert File.dir?(Path.join(:code.priv_dir(:nerves_sign), RPi4.priv_dir()))
     end

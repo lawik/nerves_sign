@@ -36,6 +36,17 @@ defmodule NervesSign.Board do
   @callback priv_dir() :: Path.t()
 
   @doc """
+  Directory name under the project's `config/` holding the files the developer
+  owns, e.g. `"rpi4"` for `config/rpi4/`.
+
+  `mix nerves_sign.gen.<board>` writes them there and post-processing reads
+  them back, so the two must agree. Declared rather than derived from
+  `c:priv_dir/0`: these paths exist on developers' disks, and renaming an
+  internal directory must not silently move them.
+  """
+  @callback config_dir() :: String.t()
+
+  @doc """
   Default key-helper C source, priv-relative (e.g. `"boards/rpi/helpers/unlock.c"`).
 
   Boards that share a key interface should share the source: every Pi reads

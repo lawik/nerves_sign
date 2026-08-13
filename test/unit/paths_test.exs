@@ -32,6 +32,27 @@ defmodule NervesSign.PathsTest do
     end
   end
 
+  describe "project_config/2" do
+    test "names the directory the gen task writes into" do
+      assert Paths.project_config(:rpi4, "cmdline.txt") == "config/rpi4/cmdline.txt"
+    end
+
+    test "cm4 shares rpi4's generated config, since one gen task serves both" do
+      assert Paths.project_config(:cm4, "config.txt") == Paths.project_config(:rpi4, "config.txt")
+    end
+
+    test "keeps a nested layout intact" do
+      assert Paths.project_config(:rpi4, "fwup_include/fwup-common.conf") ==
+               "config/rpi4/fwup_include/fwup-common.conf"
+    end
+
+    test "an unsupported board is refused rather than guessed at" do
+      assert_raise Mix.Error, ~r/unsupported board/, fn ->
+        Paths.project_config(:imx8, "config.txt")
+      end
+    end
+  end
+
   describe "board_file/2" do
     test "points into the board's priv dir" do
       path = Paths.board_file(:rpi4, "boot_fwup.conf")

@@ -36,6 +36,11 @@ defmodule NervesSign.Boards.RPi4 do
   def priv_dir, do: "boards/rpi4"
 
   @impl true
+  # Shared by :rpi4 and :cm4, which both resolve to this module and to one
+  # generated config/rpi4/ in the project.
+  def config_dir, do: "rpi4"
+
+  @impl true
   # Shared with every Pi: the customer OTP rows are read through the VideoCore
   # mailbox, which is a family interface, not a board one.
   def default_key_helper_source, do: "boards/rpi/helpers/unlock.c"

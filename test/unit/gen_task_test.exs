@@ -80,6 +80,16 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
     assert log == ""
   end
 
+  test "generates into the directory the board declares" do
+    run()
+
+    # The gen task and post-processing must agree on where these live; both go
+    # through the board rather than repeating the path.
+    for name <- ~w(config.txt cmdline.txt boot_fwup.conf initramfs.conf) do
+      assert File.exists?(NervesSign.Paths.project_config(:rpi4, name))
+    end
+  end
+
   test "the outer fwup.conf includes the common file at the path it generates" do
     run()
 

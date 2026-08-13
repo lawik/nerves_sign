@@ -45,20 +45,23 @@ defmodule NervesSign.PostProcess do
     init = Cryptinit.build(toolchain)
 
     # 4. inner cmdline with the trust anchor
-    cmdline_src = Paths.resolve(sb[:cmdline_txt_path] || "config/rpi4/cmdline.txt", app_dir)
+    cmdline_src =
+      Paths.resolve(sb[:cmdline_txt_path] || Paths.project_config(board, "cmdline.txt"), app_dir)
+
     rendered_cmdline = Cmdline.with_roothash(cmdline_src, root_hash)
     inner_cmdline = Briefly.create!()
     File.write!(inner_cmdline, rendered_cmdline)
 
     # 5. everything that would only surface as a silently unverified device
-    config_txt = Paths.resolve(sb[:config_txt_path] || "config/rpi4/config.txt", app_dir)
+    config_txt =
+      Paths.resolve(sb[:config_txt_path] || Paths.project_config(board, "config.txt"), app_dir)
 
     boot_fwup =
       Paths.project_or_board(
         board,
         sb[:boot_fwup_conf],
         app_dir,
-        "config/rpi4/boot_fwup.conf",
+        Paths.project_config(board, "boot_fwup.conf"),
         "boot_fwup.conf"
       )
 
@@ -77,7 +80,7 @@ defmodule NervesSign.PostProcess do
         board,
         sb[:initramfs_conf],
         app_dir,
-        "config/rpi4/initramfs.conf",
+        Paths.project_config(board, "initramfs.conf"),
         "initramfs.conf"
       )
 

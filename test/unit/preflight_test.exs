@@ -145,6 +145,9 @@ defmodule NervesSign.PreflightTest do
       def required_kernel_config, do: ~w(CONFIG_DM_VERITY)
       @impl true
       def priv_dir, do: "boards/imaginary"
+
+      @impl true
+      def config_dir, do: "imaginary"
       @impl true
       def default_key_helper_source, do: "boards/imaginary/helpers/unlock.c"
 
