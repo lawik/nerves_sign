@@ -127,34 +127,43 @@ defmodule NervesSign.Boards.RPi.PreflightTest do
              end) == ""
     end
 
-    test "rejects an overlay that is not in the signed image", c do
+    test "warns about an overlay that is not in the signed image", c do
       # w1-gpio-pullup is sitting commented out in entryfy's config.txt, and
       # ex_verity's boot_fwup.conf carried it. Ours does not.
       body = with_overlays(@good_config, ["dtoverlay=w1-gpio-pullup,gpiopin=4"])
 
-      err = assert_raise Mix.Error, ~r/not packed into boot\.img/, fn -> check(c, body) end
-      assert err.message =~ "overlays/w1-gpio-pullup.dtbo"
+      log = capture_log(fn -> assert check(c, body) == :ok end)
+
+      assert log =~ "overlays/w1-gpio-pullup.dtbo"
+    end
+
+    test "signs anyway: a missing overlay is a board config bug, not a broken ceremony", c do
+      # The image boots and verifies. Refusing to sign it would be deciding how
+      # the project configures its board, which is not this library's call.
+      body = with_overlays(@good_config, ["dtoverlay=pwm"])
+
+      assert capture_log(fn -> assert check(c, body) == :ok end) =~ "still verifies"
     end
 
     test "the message explains why it cannot be fixed after the fact", c do
       body = with_overlays(@good_config, ["dtoverlay=pwm"])
 
-      err = assert_raise Mix.Error, fn -> check(c, body) end
+      log = capture_log(fn -> check(c, body) end)
 
-      assert err.message =~ "invalidating boot.sig"
-      assert err.message =~ "not apply"
-      # And shows the fwup lines to add.
-      assert err.message =~ "file-resource pwm.dtbo"
-      assert err.message =~ "fat_write"
+      assert log =~ "invalidating"
+      assert log =~ "not apply"
+      # And shows the fwup lines to add, in the project's own file.
+      assert log =~ "file-resource pwm.dtbo"
+      assert log =~ "fat_write"
     end
 
     test "lists every missing overlay at once, deduplicated", c do
       body = with_overlays(@good_config, ["dtoverlay=pwm", "dtoverlay=tc358743", "dtoverlay=pwm"])
 
-      err = assert_raise Mix.Error, fn -> check(c, body) end
+      log = capture_log(fn -> check(c, body) end)
 
       # The list itself, not the worked example further down that repeats one.
-      [listed, _explanation] = String.split(err.message, "Under secure boot", parts: 2)
+      [listed, _explanation] = String.split(log, "The image still boots", parts: 2)
 
       assert listed =~ "overlays/pwm.dtbo"
       assert listed =~ "overlays/tc358743.dtbo"
@@ -202,7 +211,7 @@ defmodule NervesSign.Boards.RPi.PreflightTest do
       # image costs nothing, a missing one costs a driver.
       body = with_overlays(@good_config, ["[cm4]", "dtoverlay=tc358743"])
 
-      assert_raise Mix.Error, ~r/tc358743/, fn -> check(c, body) end
+      assert capture_log(fn -> assert check(c, body) == :ok end) =~ "tc358743"
     end
   end
 

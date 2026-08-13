@@ -16,7 +16,14 @@ defmodule NervesSign.Boards.RPi.Preflight do
 
   Filenames are read out of the board's fwup config rather than hardcoded, so a
   project that renamed resources in its own `boot_fwup.conf` validates against
-  its own layout.
+  its own layout. Nothing here decides that layout — the project owns both files
+  and can put whatever it likes in them. These checks only report when the two
+  disagree, which nothing else would.
+
+  Severity follows one rule: **raise** when the image would boot unverified or
+  not boot at all, since that is the ceremony this library exists to get right;
+  **warn** when it would boot and verify but not be what was asked for, since
+  that is a fact about the project's board config rather than about signing.
 
   Known limitation: RPi conditional filters (`[cm4]`, `[all]`, ...) are not
   interpreted. Directives are matched anywhere in the file, so a setting that
@@ -51,7 +58,7 @@ defmodule NervesSign.Boards.RPi.Preflight do
     )
 
     check_boot_ramdisk(directives, config_txt)
-    check_overlays!(directives, packed, config_txt, fwup_conf)
+    check_overlays(directives, packed, config_txt, fwup_conf)
     :ok
   end
 
@@ -100,11 +107,16 @@ defmodule NervesSign.Boards.RPi.Preflight do
 
   # Under stock Nerves the boot partition carries the whole overlays/ directory
   # from rpi-firmware, so `dtoverlay=anything` just works. Inside a signed
-  # boot.img only what the fwup config enumerates exists, and a missing overlay
-  # is silent: the firmware warns on the UART and boots anyway, leaving a device
-  # with no driver for the peripheral. You cannot drop the file on afterwards
-  # either — that invalidates boot.sig.
-  defp check_overlays!(directives, packed, config_txt, fwup_conf) do
+  # boot.img only what the fwup config enumerates exists, and you cannot add one
+  # afterwards without invalidating boot.sig.
+  #
+  # A warning, not a refusal. The image boots and is correctly verified; it is
+  # missing a driver, which is a fact about the project's board config rather
+  # than a broken signing ceremony. Where the overlay gets added is the
+  # project's business — its own boot_fwup.conf. This only points out that the
+  # two files it owns disagree, because nothing else would: the firmware warns
+  # on the UART and boots anyway.
+  defp check_overlays(directives, packed, config_txt, fwup_conf) do
     missing =
       directives
       |> Map.get(:dtoverlays, [])
@@ -115,18 +127,19 @@ defmodule NervesSign.Boards.RPi.Preflight do
     if missing != [] do
       example = hd(missing)
 
-      Mix.raise("""
+      Logger.warning("""
       nerves_sign: #{config_txt} requests overlays that are not packed into boot.img
       by #{fwup_conf}:
 
         #{Enum.join(missing, "\n  ")}
 
-      Under secure boot the signed image carries only the overlays the fwup config
-      names, and you cannot add one to the boot partition afterwards without
-      invalidating boot.sig. The firmware would boot anyway and simply not apply
-      them, leaving the driver missing at runtime with no error anywhere.
+      The image still boots and still verifies; it just will not apply them, so
+      the driver is missing at runtime with nothing else to say so. Under secure
+      boot the signed image carries only the overlays the fwup config names, and
+      one cannot be added to the boot partition afterwards without invalidating
+      boot.sig.
 
-      Add each to #{Path.basename(fwup_conf)}, e.g.
+      To ship them, add each to #{Path.basename(fwup_conf)}, e.g.
 
           file-resource #{Path.basename(example)} { host-path = "${SOURCE}/rpi-firmware/#{example}" }
 
