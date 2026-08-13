@@ -36,7 +36,9 @@ defmodule NervesSign.Boards.RPi4 do
   def priv_dir, do: "boards/rpi4"
 
   @impl true
-  def default_key_helper_source, do: "boards/rpi4/helpers/unlock.c"
+  # Shared with every Pi: the customer OTP rows are read through the VideoCore
+  # mailbox, which is a family interface, not a board one.
+  def default_key_helper_source, do: "boards/rpi/helpers/unlock.c"
 
   @impl true
   defdelegate preflight!(ctx), to: NervesSign.Boards.RPi.Preflight, as: :check!

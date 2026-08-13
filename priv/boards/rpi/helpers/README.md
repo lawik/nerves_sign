@@ -1,12 +1,16 @@
-# RPi4/CM4 key helpers
+# Raspberry Pi key helpers
 
 cryptinit resolves an encryption key by running a `cmd:` helper that prints 64
-hex characters on stdout. For RPi4/CM4 the key comes from the customer OTP rows
-read via the VideoCore mailbox (`/dev/vcio`).
+hex characters on stdout. On a Raspberry Pi the key comes from the customer OTP
+rows read via the VideoCore mailbox (`/dev/vcio`).
+
+This lives in `priv/boards/rpi/` rather than under a board because the mailbox
+is a family interface: any Pi that exposes customer OTP uses the same helper.
+Board-specific helpers, if one ever needs them, belong in that board's priv dir.
 
 ## Default: `unlock.c`
 
-nerves_sign ships `unlock.c` here as the default helper for both rpi4 and cm4.
+nerves_sign ships `unlock.c` here as the default helper for every Pi board.
 It's built static against the musl Nerves toolchain, installed at
 `/usr/sbin/unlock`, and wired with `rootfs_key = cmd:/usr/sbin/unlock` in
 `initramfs.conf`.

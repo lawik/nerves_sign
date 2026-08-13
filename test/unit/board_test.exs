@@ -51,8 +51,22 @@ defmodule NervesSign.BoardTest do
     test "defaults to the helper shipped in priv, and it exists" do
       src = Board.key_helper_source(:rpi4)
 
-      assert String.ends_with?(src, "boards/rpi4/helpers/unlock.c")
+      # boards/rpi, not boards/rpi4: the VideoCore mailbox the helper reads is
+      # a family interface, so every Pi shares one copy.
+      assert String.ends_with?(src, "boards/rpi/helpers/unlock.c")
       assert File.exists?(src)
+    end
+
+    test "rpi4 and cm4 resolve to the same shared helper" do
+      assert Board.key_helper_source(:rpi4) == Board.key_helper_source(:cm4)
+    end
+
+    test "the shared helper builds with the Makefile next to it" do
+      dir = Path.dirname(Board.key_helper_source(:rpi4))
+
+      # Initramfs.build_helper drives this Makefile when the source is the
+      # default unlock.c; without it the build silently takes the other branch.
+      assert File.exists?(Path.join(dir, "Makefile"))
     end
 
     test "an absolute override is used as-is" do

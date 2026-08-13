@@ -35,7 +35,13 @@ defmodule NervesSign.Board do
   @doc "priv-relative dir holding this board's templates + helper sources."
   @callback priv_dir() :: Path.t()
 
-  @doc "Default key-helper C source, priv-relative (e.g. \"boards/rpi4/helpers/unlock.c\")."
+  @doc """
+  Default key-helper C source, priv-relative (e.g. `"boards/rpi/helpers/unlock.c"`).
+
+  Boards that share a key interface should share the source: every Pi reads
+  customer OTP through the same VideoCore mailbox, so they all point at
+  `boards/rpi/`, not at a per-board copy.
+  """
   @callback default_key_helper_source() :: Path.t()
 
   @doc """
