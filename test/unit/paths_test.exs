@@ -66,6 +66,53 @@ defmodule NervesSign.PathsTest do
     end
   end
 
+  describe "project_file!/4" do
+    test "uses the project's file when it is there", %{app: app} do
+      path = Path.join(app, "config/rpi4/boot_fwup.conf")
+      File.write!(path, "# mine\n")
+
+      assert Paths.project_file!(nil, app, "config/rpi4/boot_fwup.conf", "gen.rpi4") == path
+    end
+
+    test "refuses to fall back to the library's copy", %{app: app} do
+      # Signing our device tree list and our overlays under the project's key,
+      # because they forgot to generate the file, is the worst outcome here.
+      err =
+        assert_raise Mix.Error, fn ->
+          Paths.project_file!(nil, app, "config/rpi4/boot_fwup.conf", "nerves_sign.gen.rpi4")
+        end
+
+      assert err.message =~ "not found"
+      assert err.message =~ "will not substitute its own copy"
+      assert err.message =~ "mix nerves_sign.gen.rpi4"
+    end
+
+    test "an explicit setting is honoured when it exists", %{app: app} do
+      File.mkdir_p!(Path.join(app, "custom"))
+      path = Path.join(app, "custom/boot.conf")
+      File.write!(path, "# elsewhere\n")
+
+      assert Paths.project_file!("custom/boot.conf", app, "config/rpi4/x.conf", "gen") == path
+    end
+
+    test "an explicit setting that is missing still raises", %{app: app} do
+      err =
+        assert_raise Mix.Error, fn ->
+          Paths.project_file!("custom/gone.conf", app, "config/rpi4/x.conf", "gen")
+        end
+
+      # Names the path they actually asked for, not the default.
+      assert err.message =~ "custom/gone.conf"
+    end
+
+    test "absolute settings work too", %{app: app} do
+      path = Path.join(app, "abs.conf")
+      File.write!(path, "x")
+
+      assert Paths.project_file!(path, app, "config/rpi4/x.conf", "gen") == path
+    end
+  end
+
   describe "project_or_board/5" do
     test "falls back to the shipped board file when the project has none", %{app: app} do
       resolved =

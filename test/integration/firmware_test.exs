@@ -114,29 +114,22 @@ defmodule NervesSign.Integration.FirmwareTest do
   describe "booting the real disk" do
     @describetag :known_gap
 
-    test "the bootloader model refuses the layout we ship: no start4.elf", c do
-      # An honest characterization of where this stands, not an endorsement.
-      #
+    test "the bootloader model refuses this layout, and that is bodge's limit not ours", c do
       # BodgeRPiBootTest treats "FAT partition containing start4.elf/start.elf"
-      # as what makes a partition bootable, and our boot partition carries only
-      # boot.img, boot.sig and the two outer txts. secure_boot_test.exs gets
-      # past this by hand-building its disk with a 3-byte stub start4.elf.
+      # as what makes a partition bootable. Our boot partition carries only
+      # boot.img, boot.sig and the two outer txts, so it refuses.
       #
-      # It cannot simply be added. A real start4.elf is 2,262,304 bytes and
-      # start4x.elf is 3,009,960; the boot partition is 19,778,560 and boot.img
-      # takes 17,825,792 of it, leaving 1,952,768 free. Roughly 310 KB short for
-      # the smaller of the two.
+      # We are not adding one. The GPU firmware this board runs is start4x.elf,
+      # pinned by start_file= in config.txt and packed inside boot.img, where it
+      # is covered by boot.sig. A second copy loose on the boot partition would
+      # be a different variant, unsigned, and never loaded on the signed path —
+      # which is the opposite of what secure boot is for. It would not fit
+      # either: 1,952,768 bytes free against 2,262,304 for start4.elf.
       #
-      # So one of these is true and this suite cannot decide which:
-      #   - signed boot does not need it loose on the partition, since the
-      #     bootloader is in EEPROM and start4x.elf ships inside boot.img, and
-      #     bodge's bootable? heuristic is a simplification; or
-      #   - it is needed, and the boot partition has to grow (or boot.img shrink)
-      #     before this layout can boot on hardware at all.
-      #
-      # Until that is settled, the signature-enforcement tests belong on the
-      # hand-built disk in secure_boot_test.exs, where a refusal means what it
-      # says. Asserting them here would pass for the wrong reason.
+      # So bodge's heuristic models the unsigned boot flow, where the bootloader
+      # scans partitions for firmware. Under boot_ramdisk=1 with signed boot the
+      # firmware comes out of the verified image instead. Recorded here so the
+      # refusal is understood rather than rediscovered.
       disk = copy_disk!(c, "provisioned")
       :ok = BodgeRPiBootTest.provision(disk, c.pub)
 
@@ -144,9 +137,26 @@ defmodule NervesSign.Integration.FirmwareTest do
 
       refute r.success
       assert r.reason == :no_bootable_partition
+    end
 
-      assert Enum.sort(fat_files(c.disk, @boot_a_offset)) ==
-               ~w(boot.img boot.sig cmdline.txt config.txt)
+    test "the GPU firmware is inside the signature, not loose on the partition", c do
+      # The point of the above: start4x.elf is covered by boot.sig. If it moved
+      # out to the boot partition it would be swappable without breaking the
+      # signature.
+      boot_img = extract(c, @boot_a_offset, "boot.img")
+
+      {listing, 0} =
+        System.cmd("mdir", ["-b", "-i", boot_img, "::"], stderr_to_stdout: true)
+
+      files = listing |> String.split("\n", trim: true) |> Enum.map(&String.trim/1)
+
+      assert "::/start4x.elf" in files
+      assert "::/fixup4x.dat" in files
+
+      # And the boot partition has no firmware of its own to be preferred.
+      partition_files = fat_files(c.disk, @boot_a_offset)
+      refute Enum.any?(partition_files, &String.starts_with?(&1, "start"))
+      refute Enum.any?(partition_files, &String.starts_with?(&1, "fixup"))
     end
 
     test "the free space in the boot partition is what the numbers above say", c do

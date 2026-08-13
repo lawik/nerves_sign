@@ -27,21 +27,6 @@ defmodule NervesSign.PostProcess do
     Toolchain
   }
 
-  # Which of these files got used decides what ends up inside a signed image,
-  # and the board defaults carry our overlay list rather than the project's.
-  # Falling back is fine; falling back quietly is not.
-  defp log_source(board, what, path, app_dir) do
-    if String.starts_with?(path, app_dir) do
-      Logger.info("nerves_sign: #{what} #{path} (project)")
-    else
-      Logger.warning(
-        "nerves_sign: #{what} #{path} — the nerves_sign default, not your " <>
-          "project's. Run `mix nerves_sign.gen.#{NervesSign.Board.impl(board).config_dir()}` " <>
-          "to own it."
-      )
-    end
-  end
-
   @doc "Run the pipeline against the built rootfs at `rootfs_path`."
   def run(rootfs_path) do
     board = NervesSign.board()
@@ -72,15 +57,14 @@ defmodule NervesSign.PostProcess do
       Paths.resolve(sb[:config_txt_path] || Paths.project_config(board, "config.txt"), app_dir)
 
     boot_fwup =
-      Paths.project_or_board(
-        board,
+      Paths.project_file!(
         sb[:boot_fwup_conf],
         app_dir,
         Paths.project_config(board, "boot_fwup.conf"),
-        "boot_fwup.conf"
+        "nerves_sign.gen.#{NervesSign.Board.impl(board).config_dir()}"
       )
 
-    log_source(board, "boot fwup config", boot_fwup, app_dir)
+    Logger.info("nerves_sign: boot fwup config #{boot_fwup}")
 
     :ok =
       Preflight.check!(board, %{

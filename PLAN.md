@@ -214,6 +214,20 @@ VideoCore customer-OTP read), and the `rpi_secure_boot` config block. What is
 genuinely per-board: device trees and firmware blobs, the toolchain pin, the
 partition layout, and the fwup configs naming them.
 
+`boot_fwup.conf` has **no library fallback**. It decides what goes inside the
+signed image — device trees, overlays, the GPU firmware — so a missing one is an
+error pointing at the gen task, not a silent substitution of ours. ex_verity is
+the standing argument: it carried an overlay list nobody had verified, written
+to the wrong path, and nothing ever said so. `initramfs.conf` still falls back,
+since its shipped default is inert until a project opts into encryption.
+
+The GPU firmware (`start4x.elf`, pinned by `start_file=`) lives **inside**
+boot.img and is therefore covered by `boot.sig`. Nothing loose on the boot
+partition — a second, unsigned copy there would be swappable without breaking
+the signature. `BodgeRPiBootTest` treats "FAT with start4.elf" as bootable,
+which models the unsigned flow; under `boot_ramdisk=1` the firmware comes out of
+the verified image instead.
+
 Where the project's own files live comes from `c:NervesSign.Board.config_dir/0`
 via `NervesSign.Paths.project_config/2`, so the gen task and post-processing
 cannot drift apart and the pipeline never spells out `config/rpi4/`.

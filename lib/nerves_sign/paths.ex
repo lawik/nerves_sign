@@ -40,6 +40,38 @@ defmodule NervesSign.Paths do
   end
 
   @doc """
+  Resolve a file the project **must** own, raising if it is not there.
+
+  Some files decide what ends up inside a signed image. Falling back to a copy
+  shipped in this library would mean signing something the developer never
+  wrote and may never have read — our device tree list, our overlays, our
+  layout. For those, absence is an error with instructions, not a default.
+  """
+  @spec project_file!(Path.t() | nil, Path.t(), Path.t(), String.t()) :: Path.t()
+  def project_file!(configured, app_dir, project_relative, gen_task) do
+    path =
+      if configured, do: resolve(configured, app_dir), else: Path.join(app_dir, project_relative)
+
+    if File.exists?(path) do
+      path
+    else
+      Mix.raise("""
+      nerves_sign: #{path} not found.
+
+      This file decides what goes inside the signed boot image, so nerves_sign
+      will not substitute its own copy for it — you would be signing a layout
+      you never wrote. Generate your own with
+
+          mix #{gen_task}
+
+      and edit it to suit your board. Point somewhere else with
+      `config :nerves_sign, rpi_secure_boot: [boot_fwup_conf: "..."]` if you
+      keep it outside config/.
+      """)
+    end
+  end
+
+  @doc """
   Resolve a file the project may own.
 
   An explicit `configured` path wins (resolved against `app_dir`), then the
