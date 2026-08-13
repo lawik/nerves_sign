@@ -67,26 +67,41 @@ board entry documents the required kernel config.
 
 ## Module layout
 
+Three tiers: board-agnostic pipeline, Pi-family shared support, one board.
+
 ```
 lib/nerves_sign.ex                  top-level API + run/1 orchestration
 lib/nerves_sign/post_process.ex     mix firmware post_processing entrypoint
 lib/nerves_sign/dm_verity.ex        veritysetup format (lifted)
-lib/nerves_sign/boot_image.ex       boot.img assemble + sign (lifted)
 lib/nerves_sign/cmdline.ex          inject verity_roothash= into cmdline.txt
+lib/nerves_sign/preflight.ex        cryptinit cmdline contract + board dispatch
 lib/nerves_sign/initramfs.ex        build cryptinit + helper, assemble CPIO
 lib/nerves_sign/cryptinit.ex        resolve + build the cryptinit init binary
 lib/nerves_sign/toolchain.ex        resolve/acquire the musl toolchain ($CC)
+lib/nerves_sign/paths.ex            project vs board file resolution
+lib/nerves_sign/fwup.ex             read facts back out of an fwup config
+lib/nerves_sign/build.ex            clean env for the musl static builds
 lib/nerves_sign/board.ex            behaviour
-lib/nerves_sign/boards/rpi4.ex      RPi4/CM4 board impl
+
+  the Pi family — every Pi, not one board:
+lib/nerves_sign/boards/rpi.ex           shared config (rpi_secure_boot)
+lib/nerves_sign/boards/rpi/preflight.ex config.txt boot firmware contract
+lib/nerves_sign/boards/rpi/boot_image.ex boot.img assemble + rpi-eeprom-digest sign
+
+  one board:
+lib/nerves_sign/boards/rpi4.ex      RPi4/CM4: dtbs, toolchain pin, dirs
 lib/mix/tasks/nerves_sign.gen.rpi4.ex  scaffold project configs
+
+priv/boards/rpi/
+  helpers/unlock.c    customer-OTP read via the VideoCore mailbox — family-wide
+  helpers/Makefile
 
 priv/boards/rpi4/
   boot_fwup.conf      inner boot.img fwup (lifted)
   config.txt          inner RPi config (lifted, kernel/initramfs lines kept)
   cmdline.txt         inner cmdline template (root=/rootfstype=/init=, hash injected)
   initramfs.conf      cryptinit config (rootfs_key = cmd:/usr/sbin/unlock, etc.)
-  helpers/unlock.c    CM4/Pi4 OTP key helper (lifted from cryptinit pi5-otp)
-  helpers/Makefile
+  fwup.conf           outer firmware fwup + fwup_include/
 ```
 
 ## Build flow (where each thing runs)
