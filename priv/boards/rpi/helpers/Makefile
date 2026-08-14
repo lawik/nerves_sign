@@ -21,15 +21,22 @@ $(TARGET): $(OBJS)
 # Host tests for the logic above the mailbox, built with the host compiler and
 # an in-memory fake. Not cross-compiled and not shipped.
 HOST_CC ?= cc
-TEST_BIN = tests/otp_test
+HOST_CFLAGS ?= -Wall -Wextra -O1 -g
+TEST_BINS = tests/otp_test tests/bootstrap_test
 
-test: $(TEST_BIN)
-	./$(TEST_BIN)
+test: $(TEST_BINS)
+	@for t in $(TEST_BINS); do ./$$t || exit 1; done
 
-$(TEST_BIN): tests/otp_test.c tests/fake_mailbox.c otp.c
-	$(HOST_CC) -Wall -Wextra -O1 -g -o $@ $^
+tests/otp_test: tests/otp_test.c tests/fake_mailbox.c otp.c
+	$(HOST_CC) $(HOST_CFLAGS) -o $@ $^
+
+# The conversion logic against a reversible stand-in for dm-crypt. Regular
+# files stand in for the partitions; everything above the crypt seam is
+# ordinary file I/O, so it behaves the same either way.
+tests/bootstrap_test: tests/bootstrap_test.c tests/fake_crypt.c bootstrap.c blockdev.c
+	$(HOST_CC) $(HOST_CFLAGS) -o $@ $^
 
 clean:
-	$(RM) $(TARGET) $(OBJS) $(TEST_BIN)
+	$(RM) $(TARGET) $(OBJS) $(TEST_BINS)
 
 .PHONY: all clean test
