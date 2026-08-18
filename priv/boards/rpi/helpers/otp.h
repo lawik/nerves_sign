@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Raspberry Pi customer OTP rows: the 256-bit per-device secret the encrypted
-// rootfs is keyed from.
+// Raspberry Pi device private key rows: the 256-bit per-device secret the
+// encrypted rootfs is keyed from.
+//
+// This is the private key area (mailbox tags 0x…81), not the customer OTP rows
+// (0x…21). Customer OTP is readable with `vcgencmd otp_dump`; these rows are
+// not, which is the whole point for key material.
 //
 // These rows are one-time programmable. A bit that has been burned to 1 can
 // never go back to 0, so a wrong write is permanent and the device is done.
@@ -19,10 +23,10 @@
 // Hex characters for the whole key, without a NUL.
 #define OTP_HEX_LEN (OTP_ROW_COUNT * 8)
 
-// Read the customer OTP rows. Returns 0 on success, -1 on failure.
+// Read the private key rows. Returns 0 on success, -1 on failure.
 int otp_read(uint32_t rows[OTP_ROW_COUNT]);
 
-// Write the customer OTP rows. Refuses (-1, errno EEXIST) unless the device is
+// Write the private key rows. Refuses (-1, errno EEXIST) unless the device is
 // currently blank, because burning over a programmed row destroys the device's
 // key permanently. Reads back and compares before returning success.
 int otp_write(const uint32_t rows[OTP_ROW_COUNT]);

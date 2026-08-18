@@ -3,6 +3,11 @@
 // Host tests for the OTP module, run against fake_mailbox.c. What is worth
 // pinning here is the refusal logic: these rows are one-time programmable, so
 // a wrong write bricks the device's ability to ever decrypt its own rootfs.
+//
+// The rows in question are the device private key area (mailbox tags 0x…81),
+// not the customer OTP rows (0x…21). Customer OTP is readable with
+// `vcgencmd otp_dump`, which is no place for the key protecting an encrypted
+// rootfs.
 
 #include "../otp.h"
 #include "fake_mailbox.h"

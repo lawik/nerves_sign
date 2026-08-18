@@ -1,8 +1,23 @@
 # Raspberry Pi key helpers
 
 cryptinit resolves an encryption key by running a `cmd:` helper that prints 64
-hex characters on stdout. On a Raspberry Pi the key comes from the customer OTP
-rows read via the VideoCore mailbox (`/dev/vcio`).
+hex characters on stdout. On a Raspberry Pi the key comes from the device
+private key rows in OTP, read via the VideoCore mailbox (`/dev/vcio`).
+
+## Which OTP area, and why
+
+There are two candidates, and they are not interchangeable:
+
+| area | tags | `vcgencmd otp_dump` |
+|---|---|---|
+| customer OTP | `0x00030021` / `0x00038021` | **visible** |
+| device private key | `0x00030081` / `0x00038081` | not visible |
+
+We use the **private key** area. It is what `rpi-otp-private-key` writes, and
+keeping the disk key out of `otp_dump` is the point. Note that cryptinit's
+`examples/pi5-otp/` helper reads customer OTP — it is illustrative, and a key
+burned into one area is invisible from the other, so mixing them looks exactly
+like an unprovisioned device.
 
 This lives in `priv/boards/rpi/` rather than under a board because the mailbox
 is a family interface: any Pi that exposes customer OTP uses the same helper.

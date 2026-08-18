@@ -267,17 +267,21 @@ cannot drift apart and the pipeline never spells out `config/rpi4/`.
    keep the kernel raw, ship the stock boot-partition size.
 4. **Cmdline + boot.img + sign**: inject `verity_roothash=`, build and sign
    boot.img with the new minimal layout.
-5. **End-to-end on a stock-ish RPi4 system** (entryfy_system_cm4 once cleaned):
-   QEMU and/or device boot.
+5. **End-to-end on a stock-ish RPi4 system** (done for QEMU): the signed
+   boot.img boots on QEMU `raspi4b`, with cryptinit opening dm-verity from the
+   root hash on the signed cmdline. Device boot still to do.
 6. **Board behaviour generalization** + **bootstrap helper** + **OTP Elixir
    convenience API**.
 
 ## Open decisions
 
-- ~~Cipher~~ (resolved): configurable per volume via `initramfs.conf`
-  (`rootfs_cipher`/`data_cipher`), library default `aes-xts-plain64`, project
-  override for legacy devices (entryfy keeps `aes-cbc-plain` in its own config,
-  not the library). cryptinit already supports this; no init change needed.
+- ~~Cipher~~ (resolved): set in `initramfs.conf`, which the project owns.
+  Library default `aes-xts-plain64`; a project with already-provisioned devices
+  keeps whatever scheme those were built with. cryptinit passes the string
+  straight to the dm-crypt table, so no init change is needed. There is
+  deliberately no Elixir-side knob: the value must match the offline encryption
+  in fwup.conf and the kernel's enabled crypto, so it lives in one visible
+  place next to `rootfs_key`.
 - Key helper: nerves_sign ships a default RPi `unlock.c` (OTP via `/dev/vcio`,
   shared rpi4/cm4); projects override the source with
   `config :nerves_sign, key_helper_source:` (e.g. HKDF, or a first-boot

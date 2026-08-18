@@ -9,9 +9,14 @@
 #include <string.h>
 #include <sys/random.h>
 
-// Mailbox property tags for the customer-programmable OTP rows.
-#define TAG_GET_CUSTOMER_OTP 0x00030021u
-#define TAG_SET_CUSTOMER_OTP 0x00038021u
+// Mailbox property tags for the device private key rows.
+//
+// Not the customer OTP tags (0x…21). Those rows are dumpable with
+// `vcgencmd otp_dump`, which is the wrong place for a key that protects an
+// encrypted rootfs. This is the area `rpi-otp-private-key` writes, and the
+// area the tooling that has actually burned keys uses.
+#define TAG_GET_PRIVATE_KEY 0x00030081u
+#define TAG_SET_PRIVATE_KEY 0x00038081u
 
 // Property buffer layout (all u32, native endian):
 //   [0] total byte size
@@ -61,7 +66,7 @@ static int transact(uint32_t tag, const uint32_t *in, uint32_t *out)
 
 int otp_read(uint32_t rows[OTP_ROW_COUNT])
 {
-    return transact(TAG_GET_CUSTOMER_OTP, NULL, rows);
+    return transact(TAG_GET_PRIVATE_KEY, NULL, rows);
 }
 
 int otp_blank(const uint32_t rows[OTP_ROW_COUNT])
@@ -84,7 +89,7 @@ int otp_write(const uint32_t rows[OTP_ROW_COUNT])
         return -1;
 
     if (!otp_blank(current)) {
-        fprintf(stderr, "otp: refusing to write, customer OTP is already programmed\n");
+        fprintf(stderr, "otp: refusing to write, the private key rows are already programmed\n");
         errno = EEXIST;
         return -1;
     }
@@ -95,7 +100,7 @@ int otp_write(const uint32_t rows[OTP_ROW_COUNT])
         return -1;
     }
 
-    if (transact(TAG_SET_CUSTOMER_OTP, rows, NULL) < 0)
+    if (transact(TAG_SET_PRIVATE_KEY, rows, NULL) < 0)
         return -1;
 
     // A burn that silently did nothing would leave the caller encrypting with

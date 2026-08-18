@@ -11,8 +11,11 @@
 
 #include <string.h>
 
-#define TAG_GET_CUSTOMER_OTP 0x00030021u
-#define TAG_SET_CUSTOMER_OTP 0x00038021u
+// The device private key rows, matching otp.c. Deliberately spelled out here
+// rather than included: if the tags in otp.c change, these tests must fail
+// until someone confirms the new ones are right, because the write is a fuse.
+#define TAG_GET_PRIVATE_KEY 0x00030081u
+#define TAG_SET_PRIVATE_KEY 0x00038081u
 #define MBOX_RESPONSE_OK 0x80000000u
 #define MSG_ROWS_AT 7
 
@@ -55,11 +58,11 @@ int mailbox_property(uint32_t *msg)
     }
 
     switch (msg[2]) {
-    case TAG_GET_CUSTOMER_OTP:
+    case TAG_GET_PRIVATE_KEY:
         memcpy(&msg[MSG_ROWS_AT], fake_rows, sizeof(fake_rows));
         break;
 
-    case TAG_SET_CUSTOMER_OTP:
+    case TAG_SET_PRIVATE_KEY:
         fake_mailbox_writes++;
         // One-time programmable: bits only ever go 0 -> 1.
         for (unsigned r = 0; r < OTP_ROW_COUNT; r++)

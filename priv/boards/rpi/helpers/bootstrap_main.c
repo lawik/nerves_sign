@@ -7,7 +7,7 @@
 //
 // On a provisioned, already-encrypted device this prints the key and exits,
 // which is all cryptinit ever sees. On a fresh one it generates a key, burns
-// it into the customer OTP rows, converts the plaintext rootfs in place, and
+// it into the device private key rows, converts the plaintext rootfs in place, and
 // then prints the same key. cryptinit does not know the difference; it asked
 // for a key and got one, possibly slowly.
 //
@@ -48,7 +48,7 @@ static int resolve_key(char *hex_out)
     uint32_t rows[OTP_ROW_COUNT];
 
     if (otp_read(rows) < 0) {
-        perror("bootstrap: reading customer OTP");
+        perror("bootstrap: reading the device private key");
         return -1;
     }
 
@@ -57,7 +57,7 @@ static int resolve_key(char *hex_out)
         return 0;
     }
 
-    fprintf(stderr, "bootstrap: customer OTP is blank; generating a device key\n");
+    fprintf(stderr, "bootstrap: private key rows are blank; generating a device key\n");
 
     if (otp_generate(rows) < 0) {
         perror("bootstrap: generating a key");

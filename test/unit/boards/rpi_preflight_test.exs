@@ -128,8 +128,8 @@ defmodule NervesSign.Boards.RPi.PreflightTest do
     end
 
     test "warns about an overlay that is not in the signed image", c do
-      # w1-gpio-pullup is sitting commented out in entryfy's config.txt, and
-      # ex_verity's boot_fwup.conf carried it. Ours does not.
+      # A real case: ex_verity's boot_fwup.conf carried w1-gpio-pullup because
+      # a product needed 1-Wire. Ours does not pack it.
       body = with_overlays(@good_config, ["dtoverlay=w1-gpio-pullup,gpiopin=4"])
 
       log = capture_log(fn -> assert check(c, body) == :ok end)
@@ -170,7 +170,7 @@ defmodule NervesSign.Boards.RPi.PreflightTest do
       assert length(Regex.scan(~r|overlays/pwm\.dtbo|, listed)) == 1
     end
 
-    test "accepts the parameterised form, which entryfy uses for cm4 host mode", c do
+    test "accepts the parameterised form used for cm4 host mode", c do
       body = with_overlays(@good_config, ["dtoverlay=dwc2,dr_mode=host"])
 
       assert capture_log(fn -> assert check(c, body) == :ok end) == ""
@@ -189,8 +189,8 @@ defmodule NervesSign.Boards.RPi.PreflightTest do
     end
 
     test "a commented-out overlay needs nothing packed", c do
-      # entryfy carries these commented out; uncommenting one is exactly the
-      # change this check exists to catch.
+      # Product configs often carry overlays commented out; uncommenting one is
+      # exactly the change this check exists to catch.
       body =
         with_overlays(@good_config, ["#dtoverlay=w1-gpio-pullup,gpiopin=4", "# dtoverlay=pwm"])
 

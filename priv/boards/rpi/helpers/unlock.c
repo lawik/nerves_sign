@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// nerves_sign default key helper for Raspberry Pi boards that expose customer
-// OTP via the VideoCore mailbox (Pi 4 / CM4 and friends).
+// nerves_sign default key helper for Raspberry Pi boards that expose the
+// device private key rows via the VideoCore mailbox (Pi 4 / CM4 and friends).
 //
-// Reads the customer-programmable OTP rows and prints the key as lowercase hex
+// Reads the private key rows and prints the key as lowercase hex
 // on stdout, which is the contract nerves_cryptinit's `cmd:` key source
 // expects (64 hex chars for a 256-bit key, exit 0).
 //
@@ -34,12 +34,12 @@ int main(void)
     uint32_t rows[OTP_ROW_COUNT];
 
     if (otp_read(rows) < 0) {
-        perror("unlock: reading customer OTP");
+        perror("unlock: reading the device private key");
         return 1;
     }
 
     if (otp_blank(rows)) {
-        fprintf(stderr, "unlock: customer OTP is empty (device not provisioned)\n");
+        fprintf(stderr, "unlock: private key rows are empty (device not provisioned)\n");
         return 1;
     }
 
