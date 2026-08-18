@@ -27,13 +27,16 @@ defmodule NervesSign.Initramfs do
           initramfs_conf: Path.t() | nil
         }) :: Path.t()
   def assemble(%{board: board, toolchain: tc, init: init, initramfs_conf: conf}) do
-    unlock = build_helper(board, tc)
+    helpers = build_helper(board, tc)
 
     root = Path.join(Briefly.create!(directory: true), "cpio_root")
     for d <- ~w(dev proc sys mnt usr/sbin etc), do: File.mkdir_p!(Path.join(root, d))
 
     install(init, Path.join(root, "init"))
-    install(unlock, Path.join(root, "usr/sbin/unlock"))
+
+    for helper <- helpers,
+        do: install(helper, Path.join([root, "usr/sbin", Path.basename(helper)]))
+
     if conf, do: File.cp!(conf, Path.join(root, "etc/initramfs.conf"))
 
     out = Path.join(Path.dirname(root), "initramfs.cpio.gz")
@@ -45,18 +48,22 @@ defmodule NervesSign.Initramfs do
   defp build_helper(board, %{cc: cc, strip: strip}) do
     src = NervesSign.Board.key_helper_source(board)
     dir = Path.dirname(src)
-    Logger.info("nerves_sign: building key helper (#{src})")
+    Logger.info("nerves_sign: building key helpers (#{src})")
 
-    # The helper Makefile builds `unlock` from unlock.c. If a project points
-    # key_helper_source elsewhere, build that file directly.
-    helper =
+    # The shipped Makefile builds more than one helper — `unlock` reads an
+    # existing key, `bootstrap-or-derive` also provisions a blank device — so
+    # everything it produces gets installed. A project pointing
+    # key_helper_source at a single source file gets that file built as
+    # `unlock`, which is what its initramfs.conf will name.
+    helpers =
       if Path.basename(src) == "unlock.c" and File.exists?(Path.join(dir, "Makefile")) do
         env = NervesSign.Build.clean_env()
         {_, 0} = System.cmd("make", ["-C", dir, "clean"], stderr_to_stdout: true, env: env)
 
         args = ["-C", dir, "CC=#{cc}", "CFLAGS=-Wall -Wextra -Os", "LDFLAGS=-static"]
         {_, 0} = System.cmd("make", args, stderr_to_stdout: true, env: env)
-        Path.join(dir, "unlock")
+
+        make_targets(dir)
       else
         out = Path.join(Briefly.create!(directory: true), "unlock")
 
@@ -65,11 +72,27 @@ defmodule NervesSign.Initramfs do
             env: NervesSign.Build.clean_env()
           )
 
-        out
+        [out]
       end
 
-    {_, 0} = System.cmd(strip, [helper])
-    helper
+    for helper <- helpers do
+      {_, 0} = System.cmd(strip, [helper])
+      Logger.info("nerves_sign: #{Path.basename(helper)} = #{File.stat!(helper).size} bytes")
+    end
+
+    helpers
+  end
+
+  # Read the target names out of the Makefile rather than hardcoding them, so
+  # a project that adds a helper to its own copy gets it shipped.
+  defp make_targets(dir) do
+    ~r/^TARGETS\s*=\s*(.+)$/m
+    |> Regex.run(File.read!(Path.join(dir, "Makefile")), capture: :all_but_first)
+    |> case do
+      [names] -> names |> String.split() |> Enum.map(&Path.join(dir, &1))
+      nil -> [Path.join(dir, "unlock")]
+    end
+    |> Enum.filter(&File.exists?/1)
   end
 
   defp install(src, dest) do

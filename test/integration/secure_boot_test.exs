@@ -124,6 +124,10 @@ defmodule NervesSign.Integration.SecureBootTest do
     listing = cpio_list(c, main)
     assert listing =~ ~r/\sinit$/m
     assert listing =~ ~r/usr\/sbin\/unlock$/m
+
+    # Both helpers ship: unlock reads an existing key, bootstrap-or-derive also
+    # provisions a blank device and converts a plaintext rootfs on first boot.
+    assert listing =~ ~r/usr\/sbin\/bootstrap-or-derive$/m
     # This fixture generates no initramfs.conf, which is how a verity-only
     # device is expressed: cryptinit treats the file as optional.
     refute listing =~ ~r/etc\/initramfs.conf$/m

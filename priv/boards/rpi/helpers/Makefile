@@ -7,13 +7,20 @@
 
 CFLAGS ?= -Wall -Wextra -Os
 LDFLAGS ?= -static
-TARGET = unlock
-OBJS = unlock.o otp.o mailbox.o
+# unlock: reads an existing key. bootstrap-or-derive: also provisions a blank
+# device and converts a plaintext rootfs on first boot.
+TARGETS = unlock bootstrap-or-derive
 
-all: $(TARGET)
+UNLOCK_OBJS = unlock.o otp.o mailbox.o
+BOOTSTRAP_OBJS = bootstrap_main.o bootstrap.o blockdev.o crypt.o dmcrypt.o otp.o mailbox.o
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
+all: $(TARGETS)
+
+unlock: $(UNLOCK_OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(UNLOCK_OBJS)
+
+bootstrap-or-derive: $(BOOTSTRAP_OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(BOOTSTRAP_OBJS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -37,6 +44,6 @@ tests/bootstrap_test: tests/bootstrap_test.c tests/fake_crypt.c bootstrap.c bloc
 	$(HOST_CC) $(HOST_CFLAGS) -o $@ $^
 
 clean:
-	$(RM) $(TARGET) $(OBJS) $(TEST_BINS)
+	$(RM) $(TARGETS) $(UNLOCK_OBJS) $(BOOTSTRAP_OBJS) $(TEST_BINS)
 
 .PHONY: all clean test
