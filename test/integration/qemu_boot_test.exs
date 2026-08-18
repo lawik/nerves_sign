@@ -175,6 +175,13 @@ defmodule NervesSign.Integration.QemuBootTest do
     cmdline=cmdline.txt
     """)
 
+    # boot_fwup.conf has no library fallback: it decides what goes inside the
+    # signed image, so the project owns it. This is what the gen task copies.
+    File.cp!(
+      Path.join([:code.priv_dir(:nerves_sign), "boards/rpi4", "boot_fwup.conf"]),
+      Path.join(conf, "boot_fwup.conf")
+    )
+
     app
   end
 

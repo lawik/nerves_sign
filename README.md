@@ -64,8 +64,20 @@ refusal, wrong-key refusal and the tryboot A/B cycle. It needs `veritysetup`,
 integration` forces it.
 
 A third tier in `test/integration/qemu_boot_test.exs` boots the signed image on
-QEMU `raspi4b` for real. It needs a built Nerves system with the dm bits `=y`:
+QEMU `raspi4b` for real: bodge picks the partition and verifies the signature,
+then the kernel, initramfs and cmdline it extracted from the *signed* image are
+handed to QEMU. Success means cryptinit opened dm-verity with the root hash off
+the signed cmdline, mounted through it, and switch_rooted.
+
+It needs a built Nerves system whose kernel has `CONFIG_DM_VERITY`,
+`CONFIG_DM_CRYPT` and the crypto `=y`, plus QEMU 9.0+ for the `raspi4b`
+machine. Any Nerves rpi4/cm4 system with those options works — the artifacts
+a project has already built are enough:
 
 ```
-NERVES_SIGN_TEST_SYSTEM=/path/to/system mix test --include integration
+NERVES_SIGN_TEST_SYSTEM=/path/to/project/.nerves/artifacts/<system>-portable-<ver> \
+  NERVES_SIGN_TEST_TOOLCHAIN_BIN=/path/to/musl/bin \
+  mix test --include integration test/integration/qemu_boot_test.exs
 ```
+
+It runs in about four seconds.
