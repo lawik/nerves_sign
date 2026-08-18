@@ -11,10 +11,12 @@ set -e
 FS_PATH="$1"
 echo "nerves_sign: post-processing ${FS_PATH}"
 
-# Run the Elixir side on the build host (the firmware is already built).
-ORIG_TARGET="${MIX_TARGET}"
-export MIX_TARGET=host
+# Run the Elixir side in the CALLER'S target env, not host. `config
+# :nerves_sign` lives in the project's target config, which only loads when
+# MIX_TARGET is the target — flipping to host silently drops it and the run
+# dies with "set `config :nerves_sign, board: ...`". The target build is
+# already compiled (mix firmware just used it), so this starts instantly and
+# runs plain BEAM code on the build host.
 mix run --no-start -e "NervesSign.run(\"${FS_PATH}\")"
-export MIX_TARGET="${ORIG_TARGET}"
 
 echo "nerves_sign: post-processing done"
