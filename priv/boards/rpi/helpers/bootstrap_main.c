@@ -106,6 +106,10 @@ static int resolve_key(const char *purpose, int raw, char *hex_out)
         return -1;
     }
 
+    // The one irreversible event in the whole flow; it gets a line in the log.
+    // otp_write has already read the rows back and verified them.
+    fprintf(stderr, "bootstrap: key burned into OTP and verified by readback\n");
+
     return derive(rows, purpose, raw, hex_out);
 }
 
