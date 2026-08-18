@@ -119,10 +119,15 @@ defmodule Mix.Tasks.NervesSign.Gen.Rpi4Test do
     assert Bitwise.band(mode, 0o111) != 0
   end
 
-  test "the bridge calls into the library entrypoint" do
+  test "the bridge calls into the library through the mix task" do
     run()
 
-    assert File.read!("priv/nerves_sign/post_process") =~ "NervesSign.run"
+    # Specifically NOT `mix run -e "NervesSign.run(...)"`: nerves_bootstrap
+    # aliases `run` under a non-host MIX_TARGET into a warning that exits 0.
+    bridge = File.read!("priv/nerves_sign/post_process")
+    assert bridge =~ "mix nerves_sign.post_process"
+    # As an invocation, that is — the comment explaining why may mention it.
+    refute bridge =~ ~r/^\s*mix run/m
   end
 
   test "re-running does not overwrite developer edits" do
