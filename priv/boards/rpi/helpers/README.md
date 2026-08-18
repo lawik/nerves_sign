@@ -41,8 +41,25 @@ It's built static against the musl Nerves toolchain, installed at
 - `blockdev.c` / `blockdev.h` — sizes, copies, durability. No `dd`.
 - `crypt.h` — the dm-crypt seam. The real backend is not written yet; the
   tests link a reversible stand-in.
-- `tests/` — host tests with an in-memory mailbox and a stand-in cipher.
-  `make test`.
+- `kdf.c` / `kdf.h` — SHA-256, HMAC-SHA256, HKDF. Static musl has no crypto
+  library and the initramfs has nothing else in it, so it is written out and
+  checked against FIPS 180-4, RFC 4231 and RFC 5869 vectors.
+- `tests/` — host tests with an in-memory mailbox, a stand-in cipher, and the
+  published KDF vectors. `make test`.
+
+## Key derivation
+
+The OTP secret is HKDF input keying material, not the key itself. Each volume
+gets its own key from a purpose string:
+
+    rootfs_key = cmd:/usr/sbin/unlock
+    data_key   = cmd:/usr/sbin/unlock --purpose data
+
+Without that, every volume would share one key and a per-volume argument would
+be decoration. `--raw` prints the secret verbatim for devices provisioned
+before derivation, or fleets deriving their own keys further up the stack. The
+choice is permanent per device: a device keyed raw will not decrypt with a
+derived key.
 
 Style follows nerves_cryptinit: static musl, syscalls rather than subprocesses,
 small. There is no shell in the initramfs to shell out to.

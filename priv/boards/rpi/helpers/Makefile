@@ -11,8 +11,8 @@ LDFLAGS ?= -static
 # device and converts a plaintext rootfs on first boot.
 TARGETS = unlock bootstrap-or-derive
 
-UNLOCK_OBJS = unlock.o otp.o mailbox.o
-BOOTSTRAP_OBJS = bootstrap_main.o bootstrap.o blockdev.o crypt.o dmcrypt.o otp.o mailbox.o
+UNLOCK_OBJS = unlock.o otp.o mailbox.o kdf.o
+BOOTSTRAP_OBJS = bootstrap_main.o bootstrap.o blockdev.o crypt.o dmcrypt.o otp.o mailbox.o kdf.o
 
 all: $(TARGETS)
 
@@ -29,7 +29,7 @@ bootstrap-or-derive: $(BOOTSTRAP_OBJS)
 # an in-memory fake. Not cross-compiled and not shipped.
 HOST_CC ?= cc
 HOST_CFLAGS ?= -Wall -Wextra -O1 -g
-TEST_BINS = tests/otp_test tests/bootstrap_test
+TEST_BINS = tests/otp_test tests/bootstrap_test tests/kdf_test
 
 test: $(TEST_BINS)
 	@for t in $(TEST_BINS); do ./$$t || exit 1; done
@@ -41,6 +41,11 @@ tests/otp_test: tests/otp_test.c tests/fake_mailbox.c otp.c
 # files stand in for the partitions; everything above the crypt seam is
 # ordinary file I/O, so it behaves the same either way.
 tests/bootstrap_test: tests/bootstrap_test.c tests/fake_crypt.c bootstrap.c blockdev.c
+	$(HOST_CC) $(HOST_CFLAGS) -o $@ $^
+
+# Published vectors for the derivation. A wrong derivation still produces
+# plausible hex, so this is the only thing that can catch it.
+tests/kdf_test: tests/kdf_test.c kdf.c
 	$(HOST_CC) $(HOST_CFLAGS) -o $@ $^
 
 clean:

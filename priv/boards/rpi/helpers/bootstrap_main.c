@@ -22,6 +22,7 @@
 
 #include "blockdev.h"
 #include "bootstrap.h"
+#include "kdf.h"
 #include "otp.h"
 
 #include <stdint.h>
@@ -32,18 +33,52 @@
 static int usage(const char *argv0)
 {
     fprintf(stderr,
-            "usage: %s <rootfs-device> <staging-device> [cipher]\n"
+            "usage: %s [--purpose STRING] [--raw] <rootfs-device> <staging-device> [cipher]\n"
             "\n"
             "  rootfs-device   the partition cryptinit will mount\n"
             "  staging-device  the spare A/B rootfs slot, same size\n"
             "  cipher          dm-crypt cipher (default aes-xts-plain64); must\n"
-            "                  match rootfs_cipher in initramfs.conf\n",
+            "                  match rootfs_cipher in initramfs.conf\n"
+            "  --purpose STR   HKDF info string (default \"rootfs\"); must match\n"
+            "                  whatever unlock uses for the same volume\n"
+            "  --raw           no derivation, for devices provisioned before it\n",
             argv0);
     return 1;
 }
 
+// Derive the volume key from the OTP secret, or pass it through for --raw.
+static int derive(const uint32_t *rows, const char *purpose, int raw, char *hex_out)
+{
+    if (raw) {
+        otp_format_hex(rows, hex_out);
+        return 0;
+    }
+
+    uint8_t ikm[OTP_ROW_COUNT * 4];
+    for (unsigned r = 0; r < OTP_ROW_COUNT; r++) {
+        ikm[r * 4] = (uint8_t)(rows[r] >> 24);
+        ikm[r * 4 + 1] = (uint8_t)(rows[r] >> 16);
+        ikm[r * 4 + 2] = (uint8_t)(rows[r] >> 8);
+        ikm[r * 4 + 3] = (uint8_t)rows[r];
+    }
+
+    uint8_t out[SHA256_DIGEST_LEN];
+    int rc = hkdf(NULL, 0, ikm, sizeof(ikm), (const uint8_t *)purpose, strlen(purpose), out,
+                  sizeof(out));
+    memset(ikm, 0, sizeof(ikm));
+
+    if (rc < 0)
+        return -1;
+
+    for (unsigned i = 0; i < sizeof(out); i++)
+        sprintf(hex_out + i * 2, "%02x", out[i]);
+
+    memset(out, 0, sizeof(out));
+    return 0;
+}
+
 // Read the device key, generating and burning one if this device has none.
-static int resolve_key(char *hex_out)
+static int resolve_key(const char *purpose, int raw, char *hex_out)
 {
     uint32_t rows[OTP_ROW_COUNT];
 
@@ -52,10 +87,8 @@ static int resolve_key(char *hex_out)
         return -1;
     }
 
-    if (!otp_blank(rows)) {
-        otp_format_hex(rows, hex_out);
-        return 0;
-    }
+    if (!otp_blank(rows))
+        return derive(rows, purpose, raw, hex_out);
 
     fprintf(stderr, "bootstrap: private key rows are blank; generating a device key\n");
 
@@ -73,24 +106,39 @@ static int resolve_key(char *hex_out)
         return -1;
     }
 
-    otp_format_hex(rows, hex_out);
-    return 0;
+    return derive(rows, purpose, raw, hex_out);
 }
 
 int main(int argc, char **argv)
 {
-    if (argc < 3 || argc > 4)
+    const char *purpose = "rootfs";
+    int raw = 0;
+    const char *positional[3] = {NULL, NULL, NULL};
+    int n = 0;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--raw") == 0)
+            raw = 1;
+        else if (strcmp(argv[i], "--purpose") == 0 && i + 1 < argc)
+            purpose = argv[++i];
+        else if (n < 3)
+            positional[n++] = argv[i];
+        else
+            return usage(argv[0]);
+    }
+
+    if (n < 2)
         return usage(argv[0]);
 
     struct bootstrap_config cfg = {
-        .rootfs_device = argv[1],
-        .staging_device = argv[2],
-        .cipher = argc == 4 ? argv[3] : "aes-xts-plain64",
+        .rootfs_device = positional[0],
+        .staging_device = positional[1],
+        .cipher = positional[2] ? positional[2] : "aes-xts-plain64",
     };
 
     char key_hex[OTP_HEX_LEN + 1];
 
-    if (resolve_key(key_hex) < 0)
+    if (resolve_key(purpose, raw, key_hex) < 0)
         return 1;
 
     if (bootstrap_run(&cfg, key_hex) < 0) {
