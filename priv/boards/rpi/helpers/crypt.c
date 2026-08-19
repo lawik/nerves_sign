@@ -22,7 +22,7 @@
 #define READ_NAME "ns-bootstrap-read"
 
 int crypt_encrypt(const char *src, const char *dst, const char *cipher,
-                  const char *key_hex, uint64_t bytes)
+                  const char *key_hex, uint64_t offset, uint64_t bytes)
 {
     char mapped[64];
 
@@ -31,7 +31,7 @@ int crypt_encrypt(const char *src, const char *dst, const char *cipher,
     if (dmcrypt_open(ENCRYPT_NAME, dst, cipher, key_hex, 0, mapped, sizeof(mapped)) < 0)
         return -1;
 
-    int rc = blockdev_copy(src, mapped, bytes);
+    int rc = blockdev_copy_range(src, mapped, offset, bytes);
     int saved = errno;
 
     // Tear the mapping down whether or not the copy worked. Leaving it behind

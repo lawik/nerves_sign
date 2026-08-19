@@ -60,6 +60,14 @@ static int write_all(int fd, const char *buf, size_t len)
 
 int blockdev_copy(const char *src, const char *dst, uint64_t bytes)
 {
+    return blockdev_copy_range(src, dst, 0, bytes);
+}
+
+int blockdev_copy_range(const char *src, const char *dst, uint64_t offset, uint64_t bytes)
+{
+    if (bytes == 0)
+        return 0;
+
     int in = open(src, O_RDONLY | O_CLOEXEC);
     if (in < 0)
         return -1;
@@ -67,6 +75,12 @@ int blockdev_copy(const char *src, const char *dst, uint64_t bytes)
     int out = open(dst, O_WRONLY | O_CREAT | O_CLOEXEC, 0600);
     if (out < 0) {
         close(in);
+        return -1;
+    }
+
+    if (lseek(in, (off_t)offset, SEEK_SET) < 0 || lseek(out, (off_t)offset, SEEK_SET) < 0) {
+        close(in);
+        close(out);
         return -1;
     }
 

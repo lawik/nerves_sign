@@ -17,11 +17,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Copy `bytes` from `src` to `dst`, encrypting on the way. `dst` receives
-// ciphertext that decrypts back to exactly the bytes read from `src`.
-// Durable on return: the data has reached the device.
+// Copy `bytes` from `src` at `offset` to the same offset on `dst`, encrypting
+// on the way. `dst` receives ciphertext that decrypts back to exactly the
+// bytes read from `src`. Durable on return: the data has reached the device.
+//
+// The offset form lets the caller order the conversion's writes — the
+// verity-superblock block is written last, as a completion marker, so an
+// interrupted pass can never leave a device that reads as fully converted.
 int crypt_encrypt(const char *src, const char *dst, const char *cipher,
-                  const char *key_hex, uint64_t bytes);
+                  const char *key_hex, uint64_t offset, uint64_t bytes);
 
 // Read `len` plaintext bytes from `device` at `offset`, decrypting.
 // Returns 0 on success, -1 on failure.

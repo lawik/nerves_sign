@@ -33,9 +33,13 @@ static const char *current_test;
 #define KEY "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
 // Filesystem then hash tree, the layout veritysetup produces and cryptinit
-// expects: 4096 bytes of squashfs, verity superblock at 4096.
+// expects: 4096 bytes of squashfs, verity superblock at 4096, and — like a
+// real device, where the image is much smaller than the partition — junk
+// after the image that the conversion still copies. The superblock sitting
+// WELL INSIDE the copy range (not near the end) is the geometry that made the
+// first hardware run's torn encrypt read as fully converted.
 #define FS_BYTES 4096
-#define SIZE 8192
+#define SIZE 16384
 
 static char root_path[] = "/tmp/ns_bootstrap_root_XXXXXX";
 static char stage_path[] = "/tmp/ns_bootstrap_stage_XXXXXX";
@@ -176,7 +180,7 @@ static void test_power_loss_during_write_back(void)
 
     // Stage a complete encrypted image, then simulate dying partway through
     // copying it back: the rootfs is half ciphertext, half plaintext.
-    CHECK(crypt_encrypt(root_path, stage_path, cfg.cipher, KEY, SIZE) == 0);
+    CHECK(crypt_encrypt(root_path, stage_path, cfg.cipher, KEY, 0, SIZE) == 0);
 
     unsigned char staged[SIZE];
     unsigned char partial[SIZE];
@@ -196,6 +200,47 @@ static void test_power_loss_during_write_back(void)
     CHECK(bootstrap_run(&cfg, KEY) == 0);
     CHECK(root_decrypts_to_original());
     CHECK(bootstrap_detect(&cfg, KEY) == BOOTSTRAP_DONE);
+}
+
+static void test_torn_encrypt_is_not_mistaken_for_staged(void)
+{
+    TEST("an encrypt pass interrupted after the marker offset is not STAGED");
+
+    // The first hardware run's failure: die mid-encrypt AFTER the byte
+    // position of the verity superblock. A sequential copy has written the
+    // superblock by then, so the torn staging read as complete, the write-back
+    // propagated garbage, and dm-verity refused the rootfs at boot. With the
+    // marker block written last, this staging must NOT read as converted.
+    //
+    // Budget 6000: survives the head range [0, 4096), dies in the tail range
+    // — after the marker's file position, before the marker is written.
+    fake_crypt_fail_after(6000);
+    CHECK(bootstrap_run(&cfg, KEY) == -1);
+
+    // The rootfs is untouched and the torn staging is not trusted.
+    CHECK(root_matches_plaintext());
+    CHECK(bootstrap_detect(&cfg, KEY) == BOOTSTRAP_PLAINTEXT);
+
+    // A retry redoes the conversion from scratch and succeeds.
+    CHECK(bootstrap_run(&cfg, KEY) == 0);
+    CHECK(root_decrypts_to_original());
+}
+
+static void test_failure_after_complete_stage_recovers(void)
+{
+    TEST("a failure right after the stage completes still recovers");
+
+    // Budget 16000: every range including the marker block lands before the
+    // failure fires — the staging is complete, only the success was never
+    // reported. The rootfs is still plaintext, so the next boot re-detects
+    // PLAINTEXT and simply converts again. Wasteful, never wrong.
+    fake_crypt_fail_after(16000);
+    CHECK(bootstrap_run(&cfg, KEY) == -1);
+    CHECK(root_matches_plaintext());
+    CHECK(bootstrap_detect(&cfg, KEY) == BOOTSTRAP_PLAINTEXT);
+
+    CHECK(bootstrap_run(&cfg, KEY) == 0);
+    CHECK(root_decrypts_to_original());
 }
 
 static void test_refuses_unknown(void)
@@ -286,7 +331,7 @@ static void test_partial_write_back_is_not_done(void)
     unsigned char staged[SIZE];
     unsigned char partial[SIZE];
 
-    CHECK(crypt_encrypt(root_path, stage_path, cfg.cipher, KEY, SIZE) == 0);
+    CHECK(crypt_encrypt(root_path, stage_path, cfg.cipher, KEY, 0, SIZE) == 0);
     CHECK(blockdev_read_at(stage_path, 0, staged, sizeof(staged)) == 0);
     CHECK(blockdev_read_at(root_path, 0, partial, sizeof(partial)) == 0);
 
@@ -324,6 +369,8 @@ int main(void)
     test_idempotent();
     test_power_loss_during_staging();
     test_power_loss_during_write_back();
+    test_torn_encrypt_is_not_mistaken_for_staged();
+    test_failure_after_complete_stage_recovers();
     test_refuses_unknown();
     test_wrong_key_does_not_look_converted();
     test_size_mismatch_refused();

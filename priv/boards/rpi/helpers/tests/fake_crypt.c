@@ -21,18 +21,27 @@
 
 unsigned fake_crypt_encrypt_calls;
 
-// Fail partway through the next encrypt, to model a power cut mid-stage.
+// Fail once the NEXT `fail_after_bytes` bytes of encryption have been
+// processed, to model a power cut mid-stage. The budget persists across
+// crypt_encrypt calls until it fires (the conversion now encrypts in several
+// ordered ranges, and a power cut does not care about range boundaries), then
+// disarms so a retry can succeed. Granularity is the 4K copy chunk: the chunk
+// that exhausts the budget is fully written before the failure, matching
+// "bytes written so far are real".
 static uint64_t fail_after_bytes;
+static uint64_t consumed_since_arm;
 
 void fake_crypt_reset(void)
 {
     fake_crypt_encrypt_calls = 0;
     fail_after_bytes = 0;
+    consumed_since_arm = 0;
 }
 
 void fake_crypt_fail_after(uint64_t bytes)
 {
     fail_after_bytes = bytes;
+    consumed_since_arm = 0;
 }
 
 static unsigned char keystream(const char *key_hex, uint64_t offset)
@@ -44,7 +53,7 @@ static unsigned char keystream(const char *key_hex, uint64_t offset)
 }
 
 static int transform(const char *src, const char *dst, const char *key_hex,
-                     uint64_t bytes, uint64_t stop_after)
+                     uint64_t offset, uint64_t bytes)
 {
     int in = open(src, O_RDONLY);
     if (in < 0)
@@ -53,6 +62,12 @@ static int transform(const char *src, const char *dst, const char *key_hex,
     int out = open(dst, O_WRONLY | O_CREAT, 0600);
     if (out < 0) {
         close(in);
+        return -1;
+    }
+
+    if (lseek(in, (off_t)offset, SEEK_SET) < 0 || lseek(out, (off_t)offset, SEEK_SET) < 0) {
+        close(in);
+        close(out);
         return -1;
     }
 
@@ -68,8 +83,11 @@ static int transform(const char *src, const char *dst, const char *key_hex,
             break;
         }
 
+        // The keystream position is the ABSOLUTE device offset, so a range
+        // encrypted at offset N decrypts at offset N and nowhere else — the
+        // property the real dm-crypt sector IVs provide.
         for (ssize_t i = 0; i < n; i++)
-            buf[i] ^= keystream(key_hex, off + (uint64_t)i);
+            buf[i] ^= keystream(key_hex, offset + off + (uint64_t)i);
 
         if (write(out, buf, (size_t)n) != n) {
             rc = -1;
@@ -78,11 +96,15 @@ static int transform(const char *src, const char *dst, const char *key_hex,
 
         off += (uint64_t)n;
 
-        if (stop_after && off >= stop_after) {
-            // Bytes written so far are real; the rest never happened.
-            errno = EIO;
-            rc = -1;
-            break;
+        if (fail_after_bytes) {
+            consumed_since_arm += (uint64_t)n;
+            if (consumed_since_arm >= fail_after_bytes) {
+                // Bytes written so far are real; the rest never happened.
+                fail_after_bytes = 0;
+                errno = EIO;
+                rc = -1;
+                break;
+            }
         }
     }
 
@@ -92,15 +114,12 @@ static int transform(const char *src, const char *dst, const char *key_hex,
 }
 
 int crypt_encrypt(const char *src, const char *dst, const char *cipher,
-                  const char *key_hex, uint64_t bytes)
+                  const char *key_hex, uint64_t offset, uint64_t bytes)
 {
     (void)cipher;
     fake_crypt_encrypt_calls++;
 
-    uint64_t stop = fail_after_bytes;
-    fail_after_bytes = 0;
-
-    return transform(src, dst, key_hex, bytes, stop);
+    return transform(src, dst, key_hex, offset, bytes);
 }
 
 int crypt_read_plain(const char *device, const char *cipher, const char *key_hex,

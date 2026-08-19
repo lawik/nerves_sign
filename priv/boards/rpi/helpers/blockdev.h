@@ -16,6 +16,11 @@ int64_t blockdev_size(const char *path);
 // Copy `bytes` from `src` to `dst` verbatim and fdatasync before returning.
 int blockdev_copy(const char *src, const char *dst, uint64_t bytes);
 
+// Copy `bytes` from `src` to `dst`, both starting at `offset`, and fdatasync.
+// The range form exists so callers can order writes: the conversion writes
+// the verity-superblock block last, as a completion marker.
+int blockdev_copy_range(const char *src, const char *dst, uint64_t offset, uint64_t bytes);
+
 // Read `len` bytes from `path` at `offset`.
 int blockdev_read_at(const char *path, uint64_t offset, void *buf, size_t len);
 
