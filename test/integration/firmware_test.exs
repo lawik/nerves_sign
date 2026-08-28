@@ -140,9 +140,9 @@ defmodule NervesSign.Integration.FirmwareTest do
     end
 
     test "the GPU firmware is inside the signature, not loose on the partition", c do
-      # The point of the above: start4x.elf is covered by boot.sig. If it moved
-      # out to the boot partition it would be swappable without breaking the
-      # signature.
+      # The point of the above: the GPU firmware is covered by boot.sig. If it
+      # moved out to the boot partition it would be swappable without breaking
+      # the signature.
       boot_img = extract(c, @boot_a_offset, "boot.img")
 
       {listing, 0} =
@@ -150,8 +150,13 @@ defmodule NervesSign.Integration.FirmwareTest do
 
       files = listing |> String.split("\n", trim: true) |> Enum.map(&String.trim/1)
 
-      assert "::/start4x.elf" in files
-      assert "::/fixup4x.dat" in files
+      # Packed under the names config.txt's start_file/fixup_file ask for —
+      # NOT the Nerves-system start4x names. The EEPROM's ramdisk loader
+      # looks these up by exact name and dies with "Firmware not found
+      # ERROR: 4" on a mismatch, which QEMU and bodge are both blind to;
+      # a real CM4 caught it.
+      assert "::/start4.elf" in files
+      assert "::/fixup4.dat" in files
 
       # And the boot partition has no firmware of its own to be preferred.
       partition_files = fat_files(c.disk, @boot_a_offset)
