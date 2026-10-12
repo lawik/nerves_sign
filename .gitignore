@@ -9,6 +9,16 @@ nerves_sign-*.tar
 /tmp/
 
 # built helper binaries
-priv/boards/*/helpers/unlock
-priv/boards/*/helpers/*.o
-priv/boards/*/helpers/tests/*_test
+# priv/boards/*/helpers holds C sources plus a Makefile; everything else in
+# there is a build artifact. Allowlisted rather than naming each target,
+# because naming them failed once: the rule listed `unlock`, the Makefile grew
+# a second target, and a 67 KB aarch64 ELF got committed (a30658b).
+priv/boards/*/helpers/*
+!priv/boards/*/helpers/*.c
+!priv/boards/*/helpers/*.h
+!priv/boards/*/helpers/Makefile
+!priv/boards/*/helpers/*.md
+!priv/boards/*/helpers/tests/
+priv/boards/*/helpers/tests/*
+!priv/boards/*/helpers/tests/*.c
+!priv/boards/*/helpers/tests/*.h
