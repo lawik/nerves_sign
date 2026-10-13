@@ -24,8 +24,10 @@ jobs:
         with:
           path: nerves_sign
 
-      # If this repo is private, add `token: ${{ secrets.BODGE_TOKEN }}` (a PAT
-      # with read access) — the default GITHUB_TOKEN cannot read another repo.
+      # bodge_rpiboottest is public, so the default GITHUB_TOKEN reads it fine.
+      # It is a sibling checkout because mix.exs declares it as a path dep
+      # (`../bodge_rpiboottest`), which only resolves if the two repos sit next
+      # to each other — hence `path:` on both checkouts.
       - uses: actions/checkout@v4
         with:
           repository: lawik/bodge_rpiboottest
@@ -67,6 +69,12 @@ jobs:
           path: nerves_sign/_build/test/nerves_sign/toolchains
           key: ${{ runner.os }}-musl-${{ hashFiles('nerves_sign/lib/nerves_sign/boards/*.ex') }}
 
+      # NOTE: this fails while fhunleth/nerves_cryptinit is private. It is a git
+      # dep over HTTPS and CI has no credentials for it; it works on a dev box
+      # only if git is configured to rewrite HTTPS to SSH. Either that repo goes
+      # public, or this needs a read token:
+      #   git config --global url."https://x-access-token:TOKEN@github.com/".insteadOf "https://github.com/"
+      # with TOKEN from a repo secret.
       - run: mix deps.get
 
       - run: mix format --check-formatted

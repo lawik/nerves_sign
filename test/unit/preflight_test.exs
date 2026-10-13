@@ -140,7 +140,6 @@ defmodule NervesSign.PreflightTest do
       @impl true
       def toolchain, do: %{version: "14.2.0", hash: "4D401D0"}
       @impl true
-      @impl true
       def required_kernel_config, do: ~w(CONFIG_DM_VERITY)
       @impl true
       def priv_dir, do: "boards/imaginary"
