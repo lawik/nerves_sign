@@ -112,31 +112,29 @@ defmodule NervesSign.Integration.FirmwareTest do
   end
 
   describe "booting the real disk" do
-    @describetag :known_gap
-
-    test "the bootloader model refuses this layout, and that is bodge's limit not ours", c do
-      # BodgeRPiBootTest treats "FAT partition containing start4.elf/start.elf"
-      # as what makes a partition bootable. Our boot partition carries only
-      # boot.img, boot.sig and the two outer txts, so it refuses.
+    test "the bootloader model boots this layout from the signed image alone", c do
+      # There is deliberately no loose start4.elf on the boot partition. The GPU
+      # firmware this board runs is packed inside boot.img under the name
+      # config.txt's start_file= asks for, where boot.sig covers it. A second
+      # copy loose on the partition would be unsigned, never loaded on the
+      # signed path, and would not fit anyway: 1,952,768 bytes free against
+      # 2,262,304 for start4.elf.
       #
-      # We are not adding one. The GPU firmware this board runs is start4x.elf,
-      # pinned by start_file= in config.txt and packed inside boot.img, where it
-      # is covered by boot.sig. A second copy loose on the boot partition would
-      # be a different variant, unsigned, and never loaded on the signed path —
-      # which is the opposite of what secure boot is for. It would not fit
-      # either: 1,952,768 bytes free against 2,262,304 for start4.elf.
-      #
-      # So bodge's heuristic models the unsigned boot flow, where the bootloader
-      # scans partitions for firmware. Under boot_ramdisk=1 with signed boot the
-      # firmware comes out of the verified image instead. Recorded here so the
-      # refusal is understood rather than rediscovered.
+      # bodge used to treat "FAT partition containing start4.elf" as the only
+      # thing that makes a partition bootable, which modelled the unsigned flow
+      # where the bootloader scans partitions for firmware, and refused this
+      # layout with :no_bootable_partition. It now also accepts a boot.img,
+      # because under boot_ramdisk=1 the firmware comes out of the verified
+      # image instead -- which is what a real EEPROM with SIGNED_BOOT=1 does.
       disk = copy_disk!(c, "provisioned")
       :ok = BodgeRPiBootTest.provision(disk, c.pub)
 
       r = BodgeRPiBootTest.boot(disk)
 
-      refute r.success
-      assert r.reason == :no_bootable_partition
+      assert r.success, "bodge refused the layout: #{inspect(r.reason)}"
+      assert r.chosen.signed == 1
+      assert r.kernel_path
+      assert r.initramfs_path
     end
 
     test "the GPU firmware is inside the signature, not loose on the partition", c do
