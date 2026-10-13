@@ -2,7 +2,7 @@ defmodule NervesSign.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/lawik/nerves_sign"
+  @source_url "https://github.com/underjord/nerves_sign"
 
   def project do
     [

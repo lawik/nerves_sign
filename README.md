@@ -29,7 +29,7 @@ dm-crypt, and the needed crypto built in (`=y`); see
 
 ```elixir
 # mix.exs
-{:nerves_sign, github: "lawik/nerves_sign", runtime: false}
+{:nerves_sign, github: "underjord/nerves_sign", runtime: false}
 ```
 
 ```
