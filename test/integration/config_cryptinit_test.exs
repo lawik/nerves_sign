@@ -29,7 +29,8 @@ defmodule NervesSign.Integration.ConfigCryptinitTest do
   @overlays ~w(overlay_map.dtb vc4-kms-v3d.dtbo vc4-kms-v3d-pi4.dtbo dwc2.dtbo)
 
   @cryptinit [
-    rootfs_key: "cmd:/usr/sbin/bootstrap-or-derive --raw /dev/mmcblk0p2 /dev/mmcblk0p4 aes-cbc-plain",
+    rootfs_key:
+      "cmd:/usr/sbin/bootstrap-or-derive --raw /dev/mmcblk0p2 /dev/mmcblk0p4 aes-cbc-plain",
     rootfs_cipher: "aes-cbc-plain"
   ]
 
@@ -83,9 +84,7 @@ defmodule NervesSign.Integration.ConfigCryptinitTest do
 
   defp cpio_entries(boot_img) do
     {gz, 0} =
-      System.cmd("mtype", ["-i", boot_img, "::rootfs.cpio.gz"],
-        env: [{"MTOOLS_SKIP_CHECK", "1"}]
-      )
+      System.cmd("mtype", ["-i", boot_img, "::rootfs.cpio.gz"], env: [{"MTOOLS_SKIP_CHECK", "1"}])
 
     # Concatenated gzip members (device nodes + main archive); zcat handles
     # what :zlib.gunzip cannot.

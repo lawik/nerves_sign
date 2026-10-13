@@ -9,7 +9,8 @@ defmodule NervesSign.PostProcessConfTest do
   # and the two ambiguous combinations that must refuse.
 
   @settings [
-    rootfs_key: "cmd:/usr/sbin/bootstrap-or-derive --raw /dev/mmcblk0p2 /dev/mmcblk0p4 aes-cbc-plain",
+    rootfs_key:
+      "cmd:/usr/sbin/bootstrap-or-derive --raw /dev/mmcblk0p2 /dev/mmcblk0p4 aes-cbc-plain",
     rootfs_cipher: "aes-cbc-plain"
   ]
 

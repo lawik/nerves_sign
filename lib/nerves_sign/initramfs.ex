@@ -41,9 +41,14 @@ defmodule NervesSign.Initramfs do
         do: install(helper, Path.join([root, "usr/sbin", Path.basename(helper)]))
 
     case conf do
-      nil -> :ok
-      settings when is_list(settings) -> File.write!(Path.join(root, "etc/initramfs.conf"), render_conf(settings))
-      path -> File.cp!(path, Path.join(root, "etc/initramfs.conf"))
+      nil ->
+        :ok
+
+      settings when is_list(settings) ->
+        File.write!(Path.join(root, "etc/initramfs.conf"), render_conf(settings))
+
+      path ->
+        File.cp!(path, Path.join(root, "etc/initramfs.conf"))
     end
 
     out = Path.join(Path.dirname(root), "initramfs.cpio.gz")

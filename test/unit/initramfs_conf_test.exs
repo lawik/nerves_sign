@@ -11,7 +11,8 @@ defmodule NervesSign.InitramfsConfTest do
   test "settings render as plain key = value lines, in order" do
     conf =
       Initramfs.render_conf(
-        rootfs_key: "cmd:/usr/sbin/bootstrap-or-derive --raw /dev/mmcblk0p2 /dev/mmcblk0p4 aes-cbc-plain",
+        rootfs_key:
+          "cmd:/usr/sbin/bootstrap-or-derive --raw /dev/mmcblk0p2 /dev/mmcblk0p4 aes-cbc-plain",
         rootfs_cipher: "aes-cbc-plain"
       )
 
