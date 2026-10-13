@@ -6,7 +6,7 @@ structure; we lift the pieces that still apply (RPi4) and drop the rest.
 
 ## The two-repo world
 
-- **nerves_cryptinit** (Frank Hunleth, public, upstream): the runtime init. A
+- **nerves_cryptinit** (Frank Hunleth, public): the runtime init. A
   tiny static-musl C `init` that does dm-verity (mandatory) and optional
   dm-crypt via raw device-mapper ioctls, then `switch_root`s to the real init.
   We **consume** it (build it from source), we do not vendor or fork it.

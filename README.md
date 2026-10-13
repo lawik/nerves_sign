@@ -2,7 +2,7 @@
 
 Compile-time Nerves tooling for secure boot. It generates the dm-verity hash
 tree, builds and packages a minimal initramfs around
-[nerves_cryptinit](https://github.com/fhunleth/nerves_cryptinit), assembles and
+[nerves_cryptinit](https://github.com/underjord/nerves_cryptinit), assembles and
 signs `boot.img`/`boot.sig`, and puts the verity root hash on the signed kernel
 cmdline.
 
@@ -12,7 +12,7 @@ cmdline.
 
 Two pieces:
 
-- **nerves_cryptinit** (upstream): the runtime init — a tiny static-musl C
+- **nerves_cryptinit** (Frank Hunleth): the runtime init — a tiny static-musl C
   `init` doing dm-verity (+ optional dm-crypt) via raw device-mapper ioctls,
   then `switch_root`. We build it from source and package it; we don't fork it.
 - **nerves_sign** (this repo): the build-time half — hash tree, initramfs CPIO,

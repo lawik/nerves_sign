@@ -2,7 +2,7 @@ defmodule NervesSign do
   @moduledoc """
   Compile-time Nerves secure boot tooling.
 
-  Pairs with [nerves_cryptinit](https://github.com/fhunleth/nerves_cryptinit)
+  Pairs with [nerves_cryptinit](https://github.com/underjord/nerves_cryptinit)
   (the runtime init). nerves_sign does the build-time half: generate the
   dm-verity hash tree, build + package the initramfs (cryptinit + board key
   helper), assemble and sign `boot.img`/`boot.sig`, and put the verity root

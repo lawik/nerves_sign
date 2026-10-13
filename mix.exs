@@ -30,7 +30,7 @@ defmodule NervesSign.MixProject do
       {:briefly, "~> 0.5"},
 
       # The runtime init we package. Pinned git dep until it stabilizes on hex.
-      {:nerves_cryptinit, github: "fhunleth/nerves_cryptinit", runtime: false, app: false},
+      {:nerves_cryptinit, github: "underjord/nerves_cryptinit", runtime: false, app: false},
 
       # RPi4 EEPROM bootloader test double, drives the integration suite.
       {:bodge_rpiboottest, path: "../bodge_rpiboottest", only: :test},
