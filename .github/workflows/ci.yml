@@ -54,13 +54,24 @@ jobs:
             "https://github.com/fwup-home/fwup/releases/download/v${FWUP_VERSION}/fwup_${FWUP_VERSION}_amd64.deb"
           sudo dpkg -i /tmp/fwup.deb
 
+      # deps/ is keyed exactly on the lock, with NO restore-keys. A prefix
+      # fallback hands a lock-changing build an older deps/ and lets
+      # `mix deps.get` be satisfied from it — so an unfetchable lock entry (a
+      # git ref that moved, a yanked package) passes CI and only surfaces for
+      # whoever next builds from clean. Refetch for real when the lock moves.
       - uses: actions/cache@v4
         with:
-          path: |
-            nerves_sign/deps
-            nerves_sign/_build
-          key: ${{ runner.os }}-mix-${{ hashFiles('nerves_sign/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
+          path: nerves_sign/deps
+          key: ${{ runner.os }}-deps-${{ hashFiles('nerves_sign/mix.lock') }}
+
+      # _build may warm-start from an older cache: a stale compile artifact
+      # gets recompiled, and it cannot make an unfetchable dependency look
+      # fetchable. Different risk, so different rules.
+      - uses: actions/cache@v4
+        with:
+          path: nerves_sign/_build
+          key: ${{ runner.os }}-build-${{ hashFiles('nerves_sign/mix.lock') }}
+          restore-keys: ${{ runner.os }}-build-
 
       # ~100 MB, pinned per board by NervesSign.Boards.RPi4.toolchain/0, so the
       # key only changes when that pin changes.
@@ -69,12 +80,10 @@ jobs:
           path: nerves_sign/_build/test/nerves_sign/toolchains
           key: ${{ runner.os }}-musl-${{ hashFiles('nerves_sign/lib/nerves_sign/boards/*.ex') }}
 
-      # NOTE: this fails while fhunleth/nerves_cryptinit is private. It is a git
-      # dep over HTTPS and CI has no credentials for it; it works on a dev box
-      # only if git is configured to rewrite HTTPS to SSH. Either that repo goes
-      # public, or this needs a read token:
-      #   git config --global url."https://x-access-token:TOKEN@github.com/".insteadOf "https://github.com/"
-      # with TOKEN from a repo secret.
+      # nerves_cryptinit is a public git dep, so no credentials are needed.
+      # It was private under the old org and broke both jobs here; if it ever
+      # goes private again CI has no way to read it, and a dev box only works
+      # because git may be configured to rewrite HTTPS to SSH.
       - run: mix deps.get
 
       - run: mix format --check-formatted
